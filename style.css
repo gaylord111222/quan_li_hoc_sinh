@@ -328,6 +328,9 @@ body{
   justify-content:center;
   z-index:50;
 }
+.modal-backdrop[hidden]{
+  display:none;
+}
 .modal{
   background:var(--chalk);
   width:100%;
