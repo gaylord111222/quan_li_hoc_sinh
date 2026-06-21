@@ -165,6 +165,16 @@ rosterSearch.addEventListener('input', renderRoster);
 
 /* ---------- Student modal (add/edit/delete) ---------- */
 const studentModal = document.getElementById('studentModal');
+
+/* Safety net: only one modal may ever be visible at a time.
+   Call this before opening any modal so a stray double-trigger
+   can never stack two backdrops on top of each other. */
+function closeAllModals(){
+  document.querySelectorAll('.modal-backdrop').forEach(el=> el.hidden = true);
+  editingStudentId = null;
+  editingScheduleId = null;
+}
+
 const studentModalTitle = document.getElementById('studentModalTitle');
 const studentNameInput = document.getElementById('studentName');
 const parentNameInput = document.getElementById('parentName');
@@ -175,6 +185,7 @@ const deleteStudentBtn = document.getElementById('deleteStudentBtn');
 let editingStudentId = null;
 
 function openStudentModal(id=null){
+  closeAllModals();
   editingStudentId = id;
   if(id){
     const s = state.students.find(x=>x.id===id);
@@ -198,13 +209,12 @@ function closeStudentModal(){ studentModal.hidden = true; editingStudentId=null;
 
 document.getElementById('addStudentBtn').addEventListener('click', ()=>openStudentModal());
 document.getElementById('cancelStudentBtn').addEventListener('click', closeStudentModal);
+document.getElementById('closeStudentModalBtn').addEventListener('click', closeStudentModal);
 studentModal.addEventListener('click', e=>{ if(e.target===studentModal) closeStudentModal(); });
 
 document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
-  const studentName = studentNameInput.value.trim();
-  if(!studentName){ studentNameInput.focus(); return; }
   const fields = {
-    studentName,
+    studentName: studentNameInput.value.trim() || '(No name)',
     parentName: parentNameInput.value.trim(),
     studentPhone: studentPhoneInput.value.trim(),
     parentPhone: parentPhoneInput.value.trim(),
@@ -339,6 +349,7 @@ const deleteScheduleBtn = document.getElementById('deleteScheduleBtn');
 let editingScheduleId = null;
 
 function openScheduleModal(id=null){
+  closeAllModals();
   editingScheduleId = id;
   if(id){
     const i = state.schedule.find(x=>x.id===id);
@@ -355,11 +366,11 @@ function closeScheduleModal(){ scheduleModal.hidden=true; editingScheduleId=null
 
 document.getElementById('addScheduleBtn').addEventListener('click', ()=>openScheduleModal());
 document.getElementById('cancelScheduleBtn').addEventListener('click', closeScheduleModal);
+document.getElementById('closeScheduleModalBtn').addEventListener('click', closeScheduleModal);
 scheduleModal.addEventListener('click', e=>{ if(e.target===scheduleModal) closeScheduleModal(); });
 
 document.getElementById('saveScheduleBtn').addEventListener('click', ()=>{
-  const subject = scheduleSubject.value.trim();
-  if(!subject){ scheduleSubject.focus(); return; }
+  const subject = scheduleSubject.value.trim() || '(Untitled class)';
   const day = parseInt(scheduleDay.value,10);
   if(editingScheduleId){
     const i = state.schedule.find(x=>x.id===editingScheduleId);

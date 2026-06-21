@@ -341,6 +341,30 @@ body{
   margin:0 0 16px;
   font-size:19px;
 }
+.modal-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.modal-header h2{margin-bottom:18px;}
+.modal-close{
+  flex-shrink:0;
+  width:32px;
+  height:32px;
+  border-radius:50%;
+  border:none;
+  background:var(--chalk-dim);
+  color:var(--green-deep);
+  font-size:15px;
+  font-weight:700;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:-2px;
+}
+.modal-close:active{background:var(--pencil);}
 .modal label{
   display:block;
   font-size:13px;

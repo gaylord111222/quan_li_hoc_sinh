@@ -113,7 +113,10 @@
 <!-- ADD/EDIT STUDENT MODAL -->
 <div class="modal-backdrop" id="studentModal" hidden>
   <div class="modal">
-    <h2 id="studentModalTitle">Add Student</h2>
+    <div class="modal-header">
+      <h2 id="studentModalTitle">Add Student</h2>
+      <button class="modal-close" id="closeStudentModalBtn" aria-label="Close">✕</button>
+    </div>
     <label>Tên học sinh <span class="req">(student name)</span>
       <input type="text" id="studentName" placeholder="e.g. Nguyễn Văn A">
     </label>
@@ -142,7 +145,10 @@
 <!-- ADD SCHEDULE MODAL -->
 <div class="modal-backdrop" id="scheduleModal" hidden>
   <div class="modal">
-    <h2>Add Class</h2>
+    <div class="modal-header">
+      <h2>Add Class</h2>
+      <button class="modal-close" id="closeScheduleModalBtn" aria-label="Close">✕</button>
+    </div>
     <label>Class / Subject name
       <input type="text" id="scheduleSubject" placeholder="e.g. Grade 7, Math">
     </label>
