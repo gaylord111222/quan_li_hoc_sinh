@@ -116,7 +116,7 @@ function showScreen(name, opts={}){
   if(name==='wheel-grades') renderGradeList('wheelGradeList','wheel');
   if(name==='wheel') renderWheel();
   if(name==='hoc-phi') renderHocPhi();
-  if(name==='hoc-phi-detail') renderHocPhiDetail();
+  if(name==='hoc-phi-detail'){ hpActiveScheduleFilter=null; renderHocPhiDetail(); }
   if(name==='giao-vien') renderGiaoVien();
 }
 
@@ -466,8 +466,9 @@ document.getElementById('saveScheduleBtn').addEventListener('click',()=>{
 function renderScheduleDetail(){
   const s=state.schedules.find(x=>x.id===activeScheduleId);
   if(!s) return;
-  document.getElementById('detailTeacher').textContent=(s.teacherName||'—') + '  ✏️';
-document.getElementById('detailTeacher').style.cursor='pointer';
+  document.getElementById('detailTeacher').textContent=(s.teacherName||'—')+' ✏️';
+  document.getElementById('detailTeacher').style.cursor='pointer';
+  document.getElementById('scheduleNotes').value=s.notes||'';
   document.getElementById('detailFeeBtn').textContent=s.baseFee?formatFee(s.baseFee):'Tap to set';
   // time blocks
   const tbList=document.getElementById('detailTimeBlocks');
@@ -508,6 +509,7 @@ document.getElementById('detailTeacher').style.cursor='pointer';
       </button>`;
     li.querySelector('[data-sid]').addEventListener('click',e=>{
       e.stopPropagation();
+      activeScheduleId=s.id;
       openFeeModal('student', sid, s.id);
     });
     li.addEventListener('click',()=>openStudentModal(sid));
@@ -517,6 +519,15 @@ document.getElementById('detailTeacher').style.cursor='pointer';
 
 document.getElementById('detailTeacher').addEventListener('click',()=>{
   openScheduleModal(activeScheduleId);
+});
+document.getElementById('saveScheduleNotesBtn').addEventListener('click',()=>{
+  const s=state.schedules.find(x=>x.id===activeScheduleId);
+  if(!s) return;
+  s.notes=document.getElementById('scheduleNotes').value;
+  saveData();
+  const btn=document.getElementById('saveScheduleNotesBtn');
+  btn.textContent='✓ Saved';
+  setTimeout(()=>btn.textContent='Lưu ghi chú',1500);
 });
 document.getElementById('detailFeeBtn').addEventListener('click',()=>openFeeModal('schedule'));
 document.getElementById('addTimeBlockBtn').addEventListener('click',()=>openTimeBlockModal());
@@ -534,6 +545,135 @@ document.getElementById('deleteScheduleDetailBtn').addEventListener('click',()=>
 /* ============================================================
    SCHEDULE OVERVIEW (Schedule tab)
    ============================================================ */
+/* ── Calendar view ── */
+const CAL_SLOTS=[
+  '7:00','8:30','10:00','11:30',
+  '13:30','15:00','16:30','18:00','19:30'
+];
+const CAL_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const CAL_DAY_IDX=[1,2,3,4,5,6,0]; // maps col→Date.getDay()
+
+let calViewActive=false;
+let dragData=null;
+
+function timeToMins(t){
+  if(!t) return 0;
+  const [h,m]=t.split(':').map(Number);
+  return h*60+m;
+}
+function minsToTime(m){
+  const h=Math.floor(m/60), mn=m%60;
+  return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
+}
+
+function renderCalendar(){
+  const table=document.getElementById('calendarTable');
+  table.innerHTML='';
+  // header row
+  const thead=document.createElement('thead');
+  const hrow=document.createElement('tr');
+  const thTime=document.createElement('th');
+  thTime.className='time-col'; thTime.textContent='Time';
+  hrow.appendChild(thTime);
+  CAL_DAYS.forEach(d=>{
+    const th=document.createElement('th'); th.textContent=d; hrow.appendChild(th);
+  });
+  thead.appendChild(hrow); table.appendChild(thead);
+
+  const tbody=document.createElement('tbody');
+  CAL_SLOTS.forEach((slot,slotIdx)=>{
+    const tr=document.createElement('tr');
+    // time label
+    const tdTime=document.createElement('td');
+    tdTime.className='time-label'; tdTime.textContent=formatTime(slot+':00'<'10'?'0'+slot:slot);
+    // fix: slot is already like '7:00'
+    tdTime.textContent=slot;
+    tr.appendChild(tdTime);
+
+    CAL_DAYS.forEach((day,dayCol)=>{
+      const td=document.createElement('td');
+      td.dataset.slot=slotIdx; td.dataset.day=CAL_DAY_IDX[dayCol];
+      // find schedules whose timeBlocks fall in this slot+day
+      const slotStart=timeToMins(CAL_SLOTS[slotIdx]);
+      const slotEnd=slotStart+90;
+      const matches=state.schedules.filter(s=>
+        (s.timeBlocks||[]).some(tb=>{
+          const tbDay=parseInt(tb.day);
+          const tbStart=timeToMins(tb.start);
+          return tbDay===CAL_DAY_IDX[dayCol] && tbStart>=slotStart && tbStart<slotEnd;
+        })
+      );
+      // render blocks side by side if multiple
+      const width=matches.length>1?`calc(${100/matches.length}% - 4px)`:undefined;
+      matches.forEach((s,mi)=>{
+        const idx=state.schedules.indexOf(s)%SCHED_COLORS.length;
+        const tb=s.timeBlocks.find(tb=>parseInt(tb.day)===CAL_DAY_IDX[dayCol]&&timeToMins(tb.start)>=slotStart&&timeToMins(tb.start)<slotEnd);
+        const block=document.createElement('div');
+        block.className='cal-block';
+        block.style.background=SCHED_COLORS[idx];
+        if(matches.length>1){
+          block.style.width=`calc(${100/matches.length}% - 4px)`;
+          block.style.left=`${mi*(100/matches.length)}%`;
+          block.style.right='auto';
+        }
+        block.style.top='2px';
+        block.style.bottom='2px';
+        block.innerHTML=`<span class="cal-block-name">${escapeHtml(s.name)}</span>
+          <span class="cal-block-time">${tb?tb.start+' – '+tb.end:''}</span>`;
+        block.draggable=true;
+        block.addEventListener('dragstart',e=>{
+          dragData={scheduleId:s.id, tbIdx:s.timeBlocks.indexOf(tb)};
+          e.dataTransfer.effectAllowed='move';
+        });
+        block.addEventListener('click',e=>{
+          e.stopPropagation();
+          activeScheduleId=s.id;
+          activeGrade=s.grade;
+          navigateTo('schedule-detail',{title:s.name,showBack:true});
+        });
+        td.appendChild(block);
+      });
+      // drag-over / drop
+      td.addEventListener('dragover',e=>{ e.preventDefault(); td.classList.add('cal-drop-target'); });
+      td.addEventListener('dragleave',()=>td.classList.remove('cal-drop-target'));
+      td.addEventListener('drop',e=>{
+        e.preventDefault(); td.classList.remove('cal-drop-target');
+        if(!dragData) return;
+        const s=state.schedules.find(x=>x.id===dragData.scheduleId);
+        if(!s||dragData.tbIdx<0) return;
+        const tb=s.timeBlocks[dragData.tbIdx];
+        if(!tb) return;
+        const dur=timeToMins(tb.end)-timeToMins(tb.start);
+        const newStart=CAL_SLOTS[parseInt(td.dataset.slot)];
+        const newEnd=minsToTime(timeToMins(newStart)+dur);
+        tb.day=parseInt(td.dataset.day);
+        tb.start=newStart;
+        tb.end=newEnd;
+        dragData=null;
+        saveData(); renderCalendar();
+      });
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+}
+
+document.getElementById('viewListBtn').addEventListener('click',()=>{
+  calViewActive=false;
+  document.getElementById('scheduleListView').hidden=false;
+  document.getElementById('scheduleCalView').hidden=true;
+  document.getElementById('viewListBtn').classList.add('active');
+  document.getElementById('viewCalBtn').classList.remove('active');
+});
+document.getElementById('viewCalBtn').addEventListener('click',()=>{
+  calViewActive=true;
+  document.getElementById('scheduleListView').hidden=true;
+  document.getElementById('scheduleCalView').hidden=false;
+  document.getElementById('viewListBtn').classList.remove('active');
+  document.getElementById('viewCalBtn').classList.add('active');
+  renderCalendar();
+});
 function populateScheduleGradeFilter(){
   const sel = document.getElementById('scheduleGradeFilter');
   const cur = sel.value;
@@ -784,17 +924,42 @@ function renderHocPhi(){
   document.getElementById('hpBoxChuaCoLich').onclick=()=>{ activeHocPhiFilter='chua-lich'; navigateTo('hoc-phi-detail',{title:'Học sinh chưa có lịch học',showBack:true}); };
 }
 
+let hpActiveScheduleFilter=null; // null=show all
+
 function renderHocPhiDetail(){
   if(!state.feePayments) state.feePayments={};
   const allStudents = state.students;
   const withSchedule = allStudents.filter(s=>state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
   const noSchedule = allStudents.filter(s=>!state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
 
+  // schedule chip row
+  const chipRow=document.getElementById('hpScheduleChipRow');
+  chipRow.innerHTML='';
+  if(activeHocPhiFilter!=='chua-lich'){
+    state.schedules.forEach((sc,i)=>{
+      const color=SCHED_COLORS[i%SCHED_COLORS.length];
+      const btn=document.createElement('button');
+      btn.className='hp-sched-chip'+(hpActiveScheduleFilter&&hpActiveScheduleFilter!==sc.id?' dim':'');
+      btn.style.background=color;
+      btn.textContent=sc.name;
+      btn.addEventListener('click',()=>{
+        hpActiveScheduleFilter=hpActiveScheduleFilter===sc.id?null:sc.id;
+        renderHocPhiDetail();
+      });
+      chipRow.appendChild(btn);
+    });
+  }
+
   let list=[];
   if(activeHocPhiFilter==='chua') list=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)!=='paid');
   else if(activeHocPhiFilter==='da') list=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)==='paid');
   else if(activeHocPhiFilter==='tat-ca') list=withSchedule;
   else if(activeHocPhiFilter==='chua-lich') list=noSchedule;
+
+  // filter by active schedule chip
+  if(hpActiveScheduleFilter){
+    list=list.filter(s=>(state.schedules.find(sc=>sc.id===hpActiveScheduleFilter)?.studentIds||[]).includes(s.id));
+  }
 
   list.sort((a,b)=>a.studentName.localeCompare(b.studentName));
   const ul=document.getElementById('hocPhiStudentList');
@@ -808,15 +973,20 @@ function renderHocPhiDetail(){
     const scheds=state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
     const row=document.createElement('div');
     row.className='hocphi-student-row'+(overdue?' overdue':'');
+    const totalFee=scheds.reduce((sum,sc)=>{
+      const fee=parseInt((s.scheduleDiscounts?.[sc.id])||sc.baseFee||0)||0;
+      return sum+fee;
+    },0);
     row.innerHTML=`
       <div class="student-avatar">${initials(s.studentName)}</div>
       <span class="hp-name">${escapeHtml(s.studentName)}</span>
       ${partial?'<span class="hp-badge">!</span>':''}
+      <span class="hp-total">${totalFee?formatFee(totalFee):''}</span>
       <div class="student-color-strips">
         ${scheds.map(sc=>{
           const idx=state.schedules.indexOf(sc)%SCHED_COLORS.length;
           const paid=isPaid(s.id,sc.id,activeHocPhiMonth);
-          return `<div class="pay-circle${paid?' paid':''}" data-sid="${s.id}" data-scid="${sc.id}" style="border-color:${SCHED_COLORS[idx]};${paid?'background:'+SCHED_COLORS[idx]:''}" title="${sc.name}">✓</div>`;
+          return `<div class="pay-circle${paid?' paid':''}" data-sid="${s.id}" data-scid="${sc.id}" style="border-color:${SCHED_COLORS[idx]};${paid?'background:'+SCHED_COLORS[idx]+';border-color:'+SCHED_COLORS[idx]:''}" title="${sc.name}">✓</div>`;
         }).join('')}
       </div>`;
     row.querySelectorAll('.pay-circle').forEach(btn=>{
@@ -905,6 +1075,30 @@ function renderGiaoVien(){
   });
 }
 
+function renderTeacherScheduleChecklist(teacherName){
+  const cl=document.getElementById('teacherScheduleChecklist');
+  cl.innerHTML='';
+  if(state.schedules.length===0){
+    cl.innerHTML='<li style="font-size:14px;color:var(--slate);padding:6px 0">No schedules yet</li>';
+    return;
+  }
+  state.schedules.forEach((s,i)=>{
+    const linked=s.teacherName&&s.teacherName.trim().toLowerCase()===(teacherName||'').trim().toLowerCase();
+    const li=document.createElement('li');
+    li.className=linked?'selected':'';
+    li.dataset.scheduleId=s.id;
+    const color=SCHED_COLORS[i%SCHED_COLORS.length];
+    li.innerHTML=`<span class="check-icon">${linked?'✓':'○'}</span>
+      <span style="flex:1">${escapeHtml(s.name)}</span>
+      <span style="width:12px;height:12px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span>`;
+    li.addEventListener('click',()=>{
+      li.classList.toggle('selected');
+      li.querySelector('.check-icon').textContent=li.classList.contains('selected')?'✓':'○';
+    });
+    cl.appendChild(li);
+  });
+}
+
 function openTeacherModal(id=null){
   closeAllModals();
   editingTeacherId=id;
@@ -915,10 +1109,12 @@ function openTeacherModal(id=null){
     document.getElementById('teacherName').value=t.name||'';
     document.getElementById('teacherPhone').value=t.phone||'';
     document.getElementById('deleteTeacherBtn').hidden=false;
+    renderTeacherScheduleChecklist(t.name);
   }else{
     document.getElementById('teacherName').value='';
     document.getElementById('teacherPhone').value='';
     document.getElementById('deleteTeacherBtn').hidden=true;
+    renderTeacherScheduleChecklist('');
   }
   modal.hidden=false;
   setTimeout(()=>document.getElementById('teacherName').focus(),50);
@@ -940,6 +1136,13 @@ document.getElementById('saveTeacherBtn').addEventListener('click',()=>{
   }else{
     state.teachers.push({id:uid(),name,phone});
   }
+  // apply schedule links from checklist
+  document.querySelectorAll('#teacherScheduleChecklist li[data-schedule-id]').forEach(li=>{
+    const sc=state.schedules.find(x=>x.id===li.dataset.scheduleId);
+    if(!sc) return;
+    if(li.classList.contains('selected')) sc.teacherName=name;
+    else if(sc.teacherName&&sc.teacherName.trim().toLowerCase()===name.trim().toLowerCase()) sc.teacherName='';
+  });
   saveData(); renderGiaoVien(); closeTeacherModal();
 });
 
