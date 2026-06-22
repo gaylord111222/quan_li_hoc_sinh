@@ -23,6 +23,7 @@ html,body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   -webkit-tap-highlight-color:transparent;
   overscroll-behavior:none;
+  font-size:17px;
 }
 
 body{
@@ -324,8 +325,9 @@ body{
   inset:0;
   background:rgba(20,28,23,.55);
   display:flex;
-  align-items:flex-end;
+  align-items:center;
   justify-content:center;
+  padding:20px;
   z-index:50;
 }
 .modal-backdrop[hidden]{
@@ -335,9 +337,9 @@ body{
   background:var(--chalk);
   width:100%;
   max-width:480px;
-  border-radius:20px 20px 0 0;
-  padding:22px 20px calc(20px + var(--safe-bottom));
-  max-height:85vh;
+  border-radius:20px;
+  padding:24px 22px;
+  max-height:88vh;
   overflow-y:auto;
 }
 .modal h2{
@@ -499,16 +501,24 @@ body{
   gap:8px;
 }
 .schedule-chip{
-  background:var(--green-deep);
-  color:var(--chalk);
+  color:#fff;
   border-radius:999px;
-  padding:7px 14px;
-  font-size:13px;
+  padding:9px 18px;
+  font-size:15px;
   font-weight:700;
   cursor:pointer;
   border:none;
+  display:flex;
+  align-items:center;
+  gap:7px;
 }
-.schedule-chip:active{background:var(--green-mid);}
+.schedule-chip .chip-count{
+  background:rgba(255,255,255,0.25);
+  border-radius:999px;
+  padding:1px 7px;
+  font-size:13px;
+}
+.schedule-chip:active{opacity:0.85;}
 
 /* Schedule detail screen */
 .sched-detail-card{
@@ -522,7 +532,7 @@ body{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  padding:10px 0;
+  padding:14px 0;
   border-bottom:1px solid var(--chalk-dim);
   gap:12px;
 }
@@ -661,3 +671,26 @@ body{
   color:var(--slate);
   margin-top:3px;
 }
+/* Schedule color strips on student cards */
+.student-color-strips{
+  display:flex;
+  gap:3px;
+  flex-shrink:0;
+  align-items:center;
+}
+.color-strip{
+  width:6px;
+  height:36px;
+  border-radius:3px;
+}
+
+/* Schedule colors — 9 distinct colors, one per schedule slot */
+.sched-color-0{background:#2F4538;}
+.sched-color-1{background:#E8B84B;}
+.sched-color-2{background:#C45B4D;}
+.sched-color-3{background:#4A7FB5;}
+.sched-color-4{background:#7B5EA7;}
+.sched-color-5{background:#3A9E7E;}
+.sched-color-6{background:#D4813A;}
+.sched-color-7{background:#5C8A3C;}
+.sched-color-8{background:#B5507A;}
