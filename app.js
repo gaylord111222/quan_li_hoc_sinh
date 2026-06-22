@@ -14,15 +14,19 @@ function schedColorIdx(scheduleId){
   const idx = state.schedules.findIndex(s=>s.id===scheduleId);
   return idx >= 0 ? idx % SCHED_COLORS.length : 0;
 }
+// fee payments: { "YYYY-MM|studentId|scheduleId": true }
+// teachers: [{ id, name, phone }]
 function defaultData(){
   return {
     students: [
       { id: uid(), grade: 1, studentName: 'Student A', parentName: '', studentPhone: '', parentPhone: '', notes: '', scheduleDiscounts: {} },
       { id: uid(), grade: 1, studentName: 'Student B', parentName: '', studentPhone: '', parentPhone: '', notes: '', scheduleDiscounts: {} },
     ],
-    schedules: [],   // NEW: replaces old flat schedule array
+    schedules: [],
     attendance: {},
-    wheelRemoved: {}
+    wheelRemoved: {},
+    feePayments: {},
+    teachers: []
   };
 }
 
