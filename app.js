@@ -1,168 +1,194 @@
 /* ============================================================
-   CLASSROOM COMPANION — app.js  v4
+   CLASSROOM COMPANION — app.js  v5 (Firebase)
+   Data syncs across all devices in real time via Firebase.
    ============================================================ */
 
-const STORAGE_KEY = 'classroomCompanion.v2';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, get }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDB0aBW3lBZEj-x6IxFOu6s3FwtnXimeTw",
+  authDomain: "quan-li-hoc-sinh-fdd84.firebaseapp.com",
+  databaseURL: "https://quan-li-hoc-sinh-fdd84-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "quan-li-hoc-sinh-fdd84",
+  storageBucket: "quan-li-hoc-sinh-fdd84.firebasestorage.app",
+  messagingSenderId: "275559965300",
+  appId: "1:275559965300:web:8634e90495d2053fb46721"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getDatabase(firebaseApp);
+const DATA_REF = ref(db, 'appData');
+
+/* ============================================================
+   STATE — single object, mirrors Firebase
+   ============================================================ */
+let state = {
+  students: [],
+  schedules: [],
+  attendance: {},
+  wheelRemoved: {},
+  feePayments: {},
+  teachers: []
+};
+let appReady = false;
+
+function saveData(){
+  set(DATA_REF, state).catch(e=>console.error('Firebase save error:', e));
+}
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
 const GRADES = [1,2,3,4,5,6,7,8,9];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-
+const MONTH_NAMES = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
 const SCHED_COLORS = [
   '#2F4538','#E8B84B','#C45B4D','#4A7FB5',
   '#7B5EA7','#3A9E7E','#D4813A','#5C8A3C','#B5507A'
 ];
-function schedColorIdx(scheduleId){
-  const idx = state.schedules.findIndex(s=>s.id===scheduleId);
-  return idx >= 0 ? idx % SCHED_COLORS.length : 0;
-}
-// fee payments: { "YYYY-MM|studentId|scheduleId": true }
-// teachers: [{ id, name, phone }]
-function defaultData(){
-  return {
-    students: [
-      { id: uid(), grade: 1, studentName: 'Student A', parentName: '', studentPhone: '', parentPhone: '', notes: '', scheduleDiscounts: {} },
-      { id: uid(), grade: 1, studentName: 'Student B', parentName: '', studentPhone: '', parentPhone: '', notes: '', scheduleDiscounts: {} },
-    ],
-    schedules: [],
-    attendance: {},
-    wheelRemoved: {},
-    feePayments: {},
-    teachers: []
-  };
-}
 
 function uid(){
-  return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
-}
-
-/* ---------- Storage ---------- */
-function loadData(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return defaultData();
-    const d = JSON.parse(raw);
-    // migrate old data: add scheduleDiscounts if missing
-    (d.students||[]).forEach(s=>{ if(!s.scheduleDiscounts) s.scheduleDiscounts={}; });
-    if(!d.schedules) d.schedules = [];
-    return d;
-  }catch(e){ return defaultData(); }
-}
-function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-
-let state = loadData();
-
-function studentsInGrade(grade){
-  return state.students.filter(s=>s.grade===grade);
+  return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 }
 function escapeHtml(str=''){
-  return str.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return str.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function initials(name){
   return (name||'').trim().split(/\s+/).slice(-2).map(w=>w[0]?.toUpperCase()||'').join('');
 }
 function formatTime(t){
   if(!t) return '--:--';
-  const [h,m] = t.split(':').map(Number);
-  const period = h>=12?'PM':'AM';
-  const h12 = ((h+11)%12)+1;
+  const [h,m]=t.split(':').map(Number);
+  const period=h>=12?'PM':'AM';
+  const h12=((h+11)%12)+1;
   return `${h12}:${String(m).padStart(2,'0')} ${period}`;
 }
 function formatFee(n){
-  if(!n && n!==0) return '—';
-  return Number(n).toLocaleString('vi-VN') + ' ₫';
+  if(!n&&n!==0) return '—';
+  return Number(n).toLocaleString('vi-VN')+' ₫';
+}
+function studentsInGrade(grade){
+  return (state.students||[]).filter(s=>s.grade===grade);
+}
+function schedColorIdx(scheduleId){
+  const idx=(state.schedules||[]).findIndex(s=>s.id===scheduleId);
+  return idx>=0?idx%SCHED_COLORS.length:0;
+}
+function timeToMins(t){
+  if(!t) return 0;
+  const [h,m]=t.split(':').map(Number);
+  return h*60+m;
+}
+function minsToTime(m){
+  const h=Math.floor(m/60),mn=m%60;
+  return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
+}
+
+/* ============================================================
+   LOADING SCREEN
+   ============================================================ */
+function showLoading(on){
+  let el=document.getElementById('loadingOverlay');
+  if(!el){
+    el=document.createElement('div');
+    el.id='loadingOverlay';
+    el.style.cssText='position:fixed;inset:0;background:var(--green-deep);display:flex;align-items:center;justify-content:center;z-index:999;color:var(--chalk);font-size:20px;font-weight:700;flex-direction:column;gap:16px';
+    el.innerHTML='<div style="font-size:36px">📚</div><div>Loading Classroom Companion…</div>';
+    document.body.appendChild(el);
+  }
+  el.hidden=!on;
 }
 
 /* ============================================================
    NAVIGATION
    ============================================================ */
-const allScreens = {
-  'grades': document.getElementById('screen-grades'),
-  'roster': document.getElementById('screen-roster'),
-  'attendance-grades': document.getElementById('screen-attendance-grades'),
-  'attendance': document.getElementById('screen-attendance'),
-  'schedule': document.getElementById('screen-schedule'),
-  'schedule-detail': document.getElementById('screen-schedule-detail'),
-  'wheel-grades': document.getElementById('screen-wheel-grades'),
-  'wheel': document.getElementById('screen-wheel'),
-  'hoc-phi': document.getElementById('screen-hoc-phi'),
-  'hoc-phi-detail': document.getElementById('screen-hoc-phi-detail'),
-  'giao-vien': document.getElementById('screen-giao-vien'),
+const allScreens={
+  'grades':document.getElementById('screen-grades'),
+  'roster':document.getElementById('screen-roster'),
+  'attendance-grades':document.getElementById('screen-attendance-grades'),
+  'attendance':document.getElementById('screen-attendance'),
+  'schedule':document.getElementById('screen-schedule'),
+  'schedule-detail':document.getElementById('screen-schedule-detail'),
+  'wheel-grades':document.getElementById('screen-wheel-grades'),
+  'wheel':document.getElementById('screen-wheel'),
+  'hoc-phi':document.getElementById('screen-hoc-phi'),
+  'hoc-phi-detail':document.getElementById('screen-hoc-phi-detail'),
+  'giao-vien':document.getElementById('screen-giao-vien'),
 };
-const titles = {
-  'grades':'Lớp học', 'roster':'Grade', 'attendance-grades':'Attendance',
-  'attendance':'Attendance', 'schedule':'Lịch dạy', 'schedule-detail':'Lịch dạy',
-  'wheel-grades':'Name Wheel', 'wheel':'Name Wheel',
-  'hoc-phi':'Học phí', 'hoc-phi-detail':'Học phí',
-  'giao-vien':'Giáo viên'
+const titles={
+  'grades':'Lớp học','roster':'Grade','attendance-grades':'Attendance',
+  'attendance':'Attendance','schedule':'Lịch dạy','schedule-detail':'Lịch dạy',
+  'wheel-grades':'Name Wheel','wheel':'Name Wheel',
+  'hoc-phi':'Học phí','hoc-phi-detail':'Học phí','giao-vien':'Giáo viên'
 };
-const topbarTitle = document.getElementById('topbarTitle');
-const backBtn = document.getElementById('backBtn');
+const topbarTitle=document.getElementById('topbarTitle');
+const backBtn=document.getElementById('backBtn');
+let activeGrade=null;
+let activeScheduleId=null;
+let currentScreen='grades';
+let screenHistory=[];
 
-let activeGrade = null;
-let activeScheduleId = null;
-let currentScreen = 'grades';
-let screenHistory = [];
-
-function showScreen(name, opts={}){
-  Object.entries(allScreens).forEach(([key,el])=> el.hidden = key!==name);
-  currentScreen = name;
-  topbarTitle.textContent = opts.title || titles[name];
-  backBtn.hidden = !opts.showBack;
+function showScreen(name,opts={}){
+  Object.entries(allScreens).forEach(([key,el])=>{ if(el) el.hidden=key!==name; });
+  currentScreen=name;
+  topbarTitle.textContent=opts.title||titles[name];
+  backBtn.hidden=!opts.showBack;
   if(name==='grades') renderGradeList();
   if(name==='roster'){ renderGradeScheduleRow(); renderRoster(); }
   if(name==='attendance-grades') renderGradeList('attendanceGradeList','attendance');
   if(name==='attendance') renderAttendance();
   if(name==='schedule') renderScheduleOverview();
   if(name==='schedule-detail') renderScheduleDetail();
-  if(name==='wheel-grades') renderGradeList('wheelGradeList','wheel');
+  if(name==='wheel-grades') renderWheelGrades();
   if(name==='wheel') renderWheel();
   if(name==='hoc-phi') renderHocPhi();
   if(name==='hoc-phi-detail'){ hpActiveScheduleFilter=null; renderHocPhiDetail(); }
   if(name==='giao-vien') renderGiaoVien();
 }
 
+function navigateTo(name,opts={}){
+  screenHistory.push({name:currentScreen,opts:{title:topbarTitle.textContent,showBack:!backBtn.hidden}});
+  showScreen(name,opts);
+}
+
 document.querySelectorAll('.tab').forEach(tab=>{
   tab.addEventListener('click',()=>{
-    const target = tab.dataset.screen;
+    const target=tab.dataset.screen;
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===tab));
-    activeGrade = null;
-    screenHistory = [];
+    activeGrade=null; screenHistory=[];
     showScreen(target,{showBack:false});
   });
 });
 
 backBtn.addEventListener('click',()=>{
-  const prev = screenHistory.pop();
-  if(prev) showScreen(prev.name, prev.opts);
-  else {
-    // fallback by screen type
+  const prev=screenHistory.pop();
+  if(prev) showScreen(prev.name,prev.opts);
+  else{
     if(currentScreen==='roster') showScreen('grades',{showBack:false});
     else if(currentScreen==='attendance') showScreen('attendance-grades',{showBack:false});
     else if(currentScreen==='schedule-detail'){
-      // came from roster or schedule tab
       if(activeGrade) showScreen('roster',{title:`Grade ${activeGrade}`,showBack:true});
       else showScreen('schedule',{showBack:false});
     }
     else if(currentScreen==='wheel') showScreen('wheel-grades',{showBack:false});
+    else if(currentScreen==='hoc-phi-detail') showScreen('hoc-phi',{showBack:false});
   }
 });
-
-function navigateTo(name, opts={}){
-  screenHistory.push({name:currentScreen, opts:{title:topbarTitle.textContent, showBack:!backBtn.hidden}});
-  showScreen(name, opts);
-}
 
 /* ============================================================
    GRADE LIST
    ============================================================ */
-function renderGradeList(listId='gradeList', mode='roster'){
-  const list = document.getElementById(listId);
+function renderGradeList(listId='gradeList',mode='roster'){
+  const list=document.getElementById(listId);
+  if(!list) return;
   list.innerHTML='';
   GRADES.forEach(g=>{
-    const count = studentsInGrade(g).length;
-    const li = document.createElement('li');
+    const count=studentsInGrade(g).length;
+    const li=document.createElement('li');
     li.className='grade-card';
-    li.innerHTML=`
-      <span class="grade-num">Grade ${g}</span>
+    li.innerHTML=`<span class="grade-num">Grade ${g}</span>
       <span class="grade-label">${count} student${count===1?'':'s'}</span>`;
     li.addEventListener('click',()=>{
       activeGrade=g;
@@ -175,27 +201,29 @@ function renderGradeList(listId='gradeList', mode='roster'){
 }
 
 /* ============================================================
-   GRADE SCHEDULE ROW (chips shown above student list)
+   GRADE SCHEDULE ROW
    ============================================================ */
 function renderGradeScheduleRow(){
-  const row = document.getElementById('gradeScheduleRow');
+  const row=document.getElementById('gradeScheduleRow');
+  if(!row) return;
   row.innerHTML='';
-  const scheds = state.schedules.filter(s=>s.grade===activeGrade);
+  const scheds=(state.schedules||[]).filter(s=>s.grade===activeGrade);
   if(scheds.length===0){
-    row.innerHTML='<li style="font-size:13px;color:var(--slate);padding:4px 0">No schedules yet — tap + to add</li>';
+    row.innerHTML='<li style="font-size:14px;color:var(--slate);padding:4px 0">No schedules yet — tap + to add</li>';
     return;
   }
-  scheds.forEach((s,i)=>{
-    const color = SCHED_COLORS[i % SCHED_COLORS.length];
-    const count = (s.studentIds||[]).length;
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
+  scheds.forEach(s=>{
+    const idx=(state.schedules||[]).indexOf(s)%SCHED_COLORS.length;
+    const color=SCHED_COLORS[idx];
+    const count=(s.studentIds||[]).length;
+    const li=document.createElement('li');
+    const btn=document.createElement('button');
     btn.className='schedule-chip';
-    btn.style.background = color;
+    btn.style.background=color;
     btn.innerHTML=`${escapeHtml(s.name)} <span class="chip-count">${count}</span>`;
     btn.addEventListener('click',()=>{
       activeScheduleId=s.id;
-      navigateTo('schedule-detail',{title:s.name,showBack:true});
+      navigateTo('schedule-detail',{title:`${s.name}${s.grade?' · Grade '+s.grade:''}`,showBack:true});
     });
     li.appendChild(btn);
     row.appendChild(li);
@@ -205,118 +233,162 @@ function renderGradeScheduleRow(){
 document.getElementById('addScheduleForGradeBtn').addEventListener('click',()=>openScheduleModal());
 
 /* ============================================================
-   ROSTER (student list within a grade)
+   ROSTER — grouped by schedule
    ============================================================ */
-const studentList = document.getElementById('studentList');
-const rosterEmpty = document.getElementById('rosterEmpty');
-const rosterSearch = document.getElementById('rosterSearch');
+const studentList=document.getElementById('studentList');
+const rosterEmpty=document.getElementById('rosterEmpty');
+const rosterSearch=document.getElementById('rosterSearch');
 
 function renderRoster(){
-  const q = rosterSearch.value.trim().toLowerCase();
-  const list = studentsInGrade(activeGrade)
-    .filter(s=>s.studentName.toLowerCase().includes(q)||(s.parentName||'').toLowerCase().includes(q))
-    .sort((a,b)=>a.studentName.localeCompare(b.studentName));
+  const q=rosterSearch.value.trim().toLowerCase();
+  const gradeStudents=studentsInGrade(activeGrade)
+    .filter(s=>s.studentName.toLowerCase().includes(q)||(s.parentName||'').toLowerCase().includes(q));
   studentList.innerHTML='';
-  rosterEmpty.hidden = studentsInGrade(activeGrade).length>0;
-  list.forEach(s=>{
-    const enrolledScheds = state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
-    const strips = enrolledScheds.map(sc=>{
-      const idx = state.schedules.findIndex(x=>x.id===sc.id) % SCHED_COLORS.length;
-      return `<div class="color-strip" style="background:${SCHED_COLORS[idx]}"></div>`;
-    }).join('');
-    const li = document.createElement('li');
-    li.className='student-card';
-    li.innerHTML=`
-      <div class="student-avatar">${initials(s.studentName)}</div>
-      <div class="student-info">
-        <div class="student-name">${escapeHtml(s.studentName)}</div>
-        <div class="student-meta">${escapeHtml(s.parentName?'PH: '+s.parentName:'Chưa có tên phụ huynh')}</div>
-      </div>
-      <div class="student-color-strips">${strips}</div>`;
-    li.addEventListener('click',()=>openStudentModal(s.id));
-    studentList.appendChild(li);
+  rosterEmpty.hidden=studentsInGrade(activeGrade).length>0;
+
+  const gradeScheds=(state.schedules||[]).filter(s=>s.grade===activeGrade);
+
+  if(gradeScheds.length===0){
+    // no schedules — just list all alphabetically
+    gradeStudents.sort((a,b)=>a.studentName.localeCompare(b.studentName))
+      .forEach(s=>studentList.appendChild(makeStudentCard(s)));
+    return;
+  }
+
+  // group by schedule; multi-schedule students go last within each group
+  const rendered=new Set();
+  gradeScheds.forEach(sc=>{
+    const idx=(state.schedules||[]).indexOf(sc)%SCHED_COLORS.length;
+    const color=SCHED_COLORS[idx];
+
+    // header separator
+    const sep=document.createElement('li');
+    sep.style.cssText='list-style:none;padding:10px 2px 4px;font-size:14px;font-weight:800;color:'+color;
+    sep.textContent=sc.name;
+    studentList.appendChild(sep);
+
+    const inThis=gradeStudents.filter(s=>(sc.studentIds||[]).includes(s.id));
+    const single=inThis.filter(s=>{
+      const allScheds=(state.schedules||[]).filter(x=>(x.studentIds||[]).includes(s.id)&&x.grade===activeGrade);
+      return allScheds.length===1;
+    });
+    const multi=inThis.filter(s=>{
+      const allScheds=(state.schedules||[]).filter(x=>(x.studentIds||[]).includes(s.id)&&x.grade===activeGrade);
+      return allScheds.length>1;
+    });
+    [...single.sort((a,b)=>a.studentName.localeCompare(b.studentName)),
+     ...multi.sort((a,b)=>a.studentName.localeCompare(b.studentName))]
+      .forEach(s=>{ studentList.appendChild(makeStudentCard(s)); rendered.add(s.id); });
   });
+
+  // students with no schedule in this grade
+  const noSched=gradeStudents.filter(s=>!(state.schedules||[]).some(sc=>(sc.studentIds||[]).includes(s.id)&&sc.grade===activeGrade));
+  if(noSched.length>0){
+    const sep=document.createElement('li');
+    sep.style.cssText='list-style:none;padding:10px 2px 4px;font-size:14px;font-weight:800;color:var(--slate)';
+    sep.textContent='Chưa có lịch';
+    studentList.appendChild(sep);
+    noSched.sort((a,b)=>a.studentName.localeCompare(b.studentName))
+      .forEach(s=>studentList.appendChild(makeStudentCard(s)));
+  }
 }
+
+function makeStudentCard(s){
+  const enrolledScheds=(state.schedules||[]).filter(sc=>(sc.studentIds||[]).includes(s.id));
+  const strips=enrolledScheds.map(sc=>{
+    const idx=(state.schedules||[]).findIndex(x=>x.id===sc.id)%SCHED_COLORS.length;
+    return `<div class="color-strip" style="background:${SCHED_COLORS[idx]}"></div>`;
+  }).join('');
+  const li=document.createElement('li');
+  li.className='student-card';
+  li.innerHTML=`
+    <div class="student-avatar">${initials(s.studentName)}</div>
+    <div class="student-info">
+      <div class="student-name">${escapeHtml(s.studentName)}</div>
+      <div class="student-meta">${escapeHtml(s.parentName?'PH: '+s.parentName:'Chưa có tên phụ huynh')}</div>
+    </div>
+    <div class="student-color-strips">${strips}</div>`;
+  li.addEventListener('click',()=>openStudentModal(s.id));
+  return li;
+}
+
 rosterSearch.addEventListener('input',renderRoster);
 
 /* ============================================================
    STUDENT MODAL
    ============================================================ */
-const studentModal = document.getElementById('studentModal');
-const studentModalTitle = document.getElementById('studentModalTitle');
-const studentNameInput = document.getElementById('studentName');
-const parentNameInput = document.getElementById('parentName');
-const studentPhoneInput = document.getElementById('studentPhone');
-const parentPhoneInput = document.getElementById('parentPhone');
-const studentNotesInput = document.getElementById('studentNotes');
-const studentGradeSelect = document.getElementById('studentGrade');
-const deleteStudentBtn = document.getElementById('deleteStudentBtn');
-let editingStudentId = null;
+const studentModal=document.getElementById('studentModal');
+const studentModalTitle=document.getElementById('studentModalTitle');
+const studentNameInput=document.getElementById('studentName');
+const parentNameInput=document.getElementById('parentName');
+const studentPhoneInput=document.getElementById('studentPhone');
+const parentPhoneInput=document.getElementById('parentPhone');
+const studentNotesInput=document.getElementById('studentNotes');
+const studentGradeSelect=document.getElementById('studentGrade');
+const deleteStudentBtn=document.getElementById('deleteStudentBtn');
+let editingStudentId=null;
+let studentModalDraft={};
 
-/* ---- preserve typed data so clicking outside doesn't lose it ---- */
-let studentModalDraft = {};
 function saveDraft(){
-  studentModalDraft = {
-    studentName: studentNameInput.value,
-    parentName: parentNameInput.value,
-    studentPhone: studentPhoneInput.value,
-    parentPhone: parentPhoneInput.value,
-    notes: studentNotesInput.value,
-    grade: studentGradeSelect.value,
+  studentModalDraft={
+    studentName:studentNameInput.value,
+    parentName:parentNameInput.value,
+    studentPhone:studentPhoneInput.value,
+    parentPhone:parentPhoneInput.value,
+    notes:studentNotesInput.value,
+    grade:studentGradeSelect.value,
+    enrollDate:document.getElementById('studentEnrollDate').value,
   };
 }
 function restoreDraft(){
-  studentNameInput.value = studentModalDraft.studentName||'';
-  parentNameInput.value = studentModalDraft.parentName||'';
-  studentPhoneInput.value = studentModalDraft.studentPhone||'';
-  parentPhoneInput.value = studentModalDraft.parentPhone||'';
-  studentNotesInput.value = studentModalDraft.notes||'';
-  if(studentModalDraft.grade) studentGradeSelect.value = studentModalDraft.grade;
+  studentNameInput.value=studentModalDraft.studentName||'';
+  parentNameInput.value=studentModalDraft.parentName||'';
+  studentPhoneInput.value=studentModalDraft.studentPhone||'';
+  parentPhoneInput.value=studentModalDraft.parentPhone||'';
+  studentNotesInput.value=studentModalDraft.notes||'';
+  document.getElementById('studentEnrollDate').value=studentModalDraft.enrollDate||'';
+  if(studentModalDraft.grade) studentGradeSelect.value=studentModalDraft.grade;
 }
-
 function populateGradeSelect(){
   studentGradeSelect.innerHTML='';
   GRADES.forEach(g=>{
-    const opt = document.createElement('option');
+    const opt=document.createElement('option');
     opt.value=g; opt.textContent=`Grade ${g}`;
     studentGradeSelect.appendChild(opt);
   });
 }
-
 function renderStudentScheduleChecklist(studentId){
-  const cl = document.getElementById('studentScheduleChecklist');
+  const cl=document.getElementById('studentScheduleChecklist');
   cl.innerHTML='';
-  const grade = parseInt(studentGradeSelect.value||activeGrade);
-  const scheds = state.schedules.filter(s=>s.grade===grade);
+  const grade=parseInt(studentGradeSelect.value||activeGrade);
+  const scheds=(state.schedules||[]).filter(s=>s.grade===grade);
   if(scheds.length===0){
-    cl.innerHTML='<li style="font-size:13px;color:var(--slate);padding:6px 0">No schedules in this grade yet</li>';
+    cl.innerHTML='<li style="font-size:14px;color:var(--slate);padding:6px 0">No schedules in this grade yet</li>';
     return;
   }
   scheds.forEach(s=>{
-    const enrolled = s.studentIds && s.studentIds.includes(studentId);
-    const discount = studentId && state.students.find(x=>x.id===studentId)?.scheduleDiscounts?.[s.id];
-    const li = document.createElement('li');
-    li.className = enrolled?'selected':'';
-    li.dataset.scheduleId = s.id;
-    li.innerHTML=`
-      <span class="check-icon">${enrolled?'✓':'○'}</span>
+    const enrolled=(s.studentIds||[]).includes(studentId);
+    const discount=studentId&&(state.students||[]).find(x=>x.id===studentId)?.scheduleDiscounts?.[s.id];
+    const li=document.createElement('li');
+    li.className=enrolled?'selected':'';
+    li.dataset.scheduleId=s.id;
+    li.innerHTML=`<span class="check-icon">${enrolled?'✓':'○'}</span>
       <span style="flex:1">${escapeHtml(s.name)}</span>
       ${discount?`<span class="discount-badge">${formatFee(discount)}</span>`:''}`;
     li.addEventListener('click',()=>{
       li.classList.toggle('selected');
-      li.querySelector('.check-icon').textContent = li.classList.contains('selected')?'✓':'○';
+      li.querySelector('.check-icon').textContent=li.classList.contains('selected')?'✓':'○';
     });
     cl.appendChild(li);
   });
 }
-
 function openStudentModal(id=null){
   closeAllModals();
   editingStudentId=id;
   populateGradeSelect();
   studentModalDraft={};
- if(id){
-    const s=state.students.find(x=>x.id===id);
+  if(id){
+    const s=(state.students||[]).find(x=>x.id===id);
     studentModalTitle.textContent='Edit Student';
     studentNameInput.value=s.studentName;
     parentNameInput.value=s.parentName||'';
@@ -329,7 +401,9 @@ function openStudentModal(id=null){
   }else{
     studentModalTitle.textContent=`Add Student — Grade ${activeGrade}`;
     studentNameInput.value=''; parentNameInput.value='';
-    studentPhoneInput.value=''; parentPhoneInput.value=''; studentNotesInput.value='';
+    studentPhoneInput.value=''; parentPhoneInput.value='';
+    studentNotesInput.value='';
+    document.getElementById('studentEnrollDate').value='';
     studentGradeSelect.value=activeGrade;
     deleteStudentBtn.hidden=true;
   }
@@ -337,17 +411,10 @@ function openStudentModal(id=null){
   studentModal.hidden=false;
   setTimeout(()=>studentNameInput.focus(),50);
 }
-
 function closeStudentModal(){ studentModal.hidden=true; editingStudentId=null; }
 
-/* clicking OUTSIDE the modal box saves draft so data isn't lost */
-studentModal.addEventListener('click',e=>{
-  if(e.target===studentModal){ saveDraft(); closeStudentModal(); }
-});
-
+studentModal.addEventListener('click',e=>{ if(e.target===studentModal){ saveDraft(); closeStudentModal(); } });
 document.getElementById('addStudentBtn').addEventListener('click',()=>{
-  if(studentModal.hidden===false){ /* already open, ignore */ return; }
-  // restore draft if any
   openStudentModal();
   if(studentModalDraft.studentName!==undefined) restoreDraft();
 });
@@ -356,40 +423,33 @@ document.getElementById('closeStudentModalBtn').addEventListener('click',()=>{ s
 
 document.getElementById('saveStudentBtn').addEventListener('click',()=>{
   const fields={
-    studentName: studentNameInput.value.trim()||'(No name)',
-    parentName: parentNameInput.value.trim(),
-    studentPhone: studentPhoneInput.value.trim(),
-    parentPhone: parentPhoneInput.value.trim(),
-    notes: studentNotesInput.value.trim(),
-    grade: parseInt(studentGradeSelect.value),
-    enrollDate: document.getElementById('studentEnrollDate').value||'',
+    studentName:studentNameInput.value.trim()||'(No name)',
+    parentName:parentNameInput.value.trim(),
+    studentPhone:studentPhoneInput.value.trim(),
+    parentPhone:parentPhoneInput.value.trim(),
+    notes:studentNotesInput.value.trim(),
+    grade:parseInt(studentGradeSelect.value),
+    enrollDate:document.getElementById('studentEnrollDate').value||'',
   };
-  // handle schedule enrollment changes
-  const checklist = document.querySelectorAll('#studentScheduleChecklist li[data-schedule-id]');
-  checklist.forEach(li=>{
-    const sid = li.dataset.scheduleId;
-    const sched = state.schedules.find(x=>x.id===sid);
-    if(!sched) return;
-    if(!sched.studentIds) sched.studentIds=[];
-    const enrolled = li.classList.contains('selected');
-    const already = sched.studentIds.includes(editingStudentId||'__new__');
-    if(enrolled && editingStudentId && !sched.studentIds.includes(editingStudentId)){
-      sched.studentIds.push(editingStudentId);
-    } else if(!enrolled && editingStudentId){
-      sched.studentIds = sched.studentIds.filter(x=>x!==editingStudentId);
-    }
-  });
+  const checklist=document.querySelectorAll('#studentScheduleChecklist li[data-schedule-id]');
   if(editingStudentId){
-    const s=state.students.find(x=>x.id===editingStudentId);
-    Object.assign(s,fields);
+    const idx=(state.students||[]).findIndex(x=>x.id===editingStudentId);
+    if(idx>-1) Object.assign(state.students[idx],fields);
+    checklist.forEach(li=>{
+      const sc=(state.schedules||[]).find(x=>x.id===li.dataset.scheduleId);
+      if(!sc) return;
+      if(!sc.studentIds) sc.studentIds=[];
+      if(li.classList.contains('selected')&&!sc.studentIds.includes(editingStudentId)) sc.studentIds.push(editingStudentId);
+      else if(!li.classList.contains('selected')) sc.studentIds=sc.studentIds.filter(x=>x!==editingStudentId);
+    });
   }else{
     const newId=uid();
-    state.students.push({id:newId, scheduleDiscounts:{}, ...fields});
-    // enroll new student in selected schedules
+    if(!state.students) state.students=[];
+    state.students.push({id:newId,scheduleDiscounts:{},...fields});
     checklist.forEach(li=>{
       if(li.classList.contains('selected')){
-        const sched=state.schedules.find(x=>x.id===li.dataset.scheduleId);
-        if(sched){ if(!sched.studentIds) sched.studentIds=[]; sched.studentIds.push(newId); }
+        const sc=(state.schedules||[]).find(x=>x.id===li.dataset.scheduleId);
+        if(sc){ if(!sc.studentIds) sc.studentIds=[]; sc.studentIds.push(newId); }
       }
     });
   }
@@ -400,19 +460,18 @@ document.getElementById('saveStudentBtn').addEventListener('click',()=>{
 deleteStudentBtn.addEventListener('click',()=>{
   if(!editingStudentId) return;
   if(confirm('Delete this student?')){
-    state.students=state.students.filter(x=>x.id!==editingStudentId);
-    state.schedules.forEach(s=>{ s.studentIds=(s.studentIds||[]).filter(x=>x!==editingStudentId); });
+    state.students=(state.students||[]).filter(x=>x.id!==editingStudentId);
+    (state.schedules||[]).forEach(s=>{ s.studentIds=(s.studentIds||[]).filter(x=>x!==editingStudentId); });
     saveData(); renderRoster(); closeStudentModal();
   }
 });
 
 /* ============================================================
-   ALL MODALS: shared guard
+   CLOSE ALL MODALS
    ============================================================ */
-let editingStudentId_guard_already_declared = true; // just a marker
-let editingScheduleId = null;
-let editingTimeBlockIdx = null;
-let feeModalContext = null; // {type:'schedule'} or {type:'student', studentId, scheduleId}
+let editingScheduleId=null;
+let feeModalContext=null;
+let editingTeacherId=null;
 
 function closeAllModals(){
   document.querySelectorAll('.modal-backdrop').forEach(el=>el.hidden=true);
@@ -420,16 +479,15 @@ function closeAllModals(){
 }
 
 /* ============================================================
-   SCHEDULE MODAL (add/edit a schedule for a grade)
+   SCHEDULE MODAL
    ============================================================ */
-const scheduleModal = document.getElementById('scheduleModal');
-
+const scheduleModal=document.getElementById('scheduleModal');
 function openScheduleModal(id=null){
   closeAllModals();
   editingScheduleId=id;
-  document.getElementById('scheduleModalTitle').textContent = id?'Edit Schedule':'Add Schedule';
+  document.getElementById('scheduleModalTitle').textContent=id?'Edit Schedule':'Add Schedule';
   if(id){
-    const s=state.schedules.find(x=>x.id===id);
+    const s=(state.schedules||[]).find(x=>x.id===id);
     document.getElementById('scheduleSubject').value=s.name||'';
     document.getElementById('scheduleTeacher').value=s.teacherName||'';
     document.getElementById('scheduleBaseFee').value=s.baseFee||'';
@@ -442,20 +500,19 @@ function openScheduleModal(id=null){
   setTimeout(()=>document.getElementById('scheduleSubject').focus(),50);
 }
 function closeScheduleModal(){ scheduleModal.hidden=true; editingScheduleId=null; }
-
 scheduleModal.addEventListener('click',e=>{ if(e.target===scheduleModal) closeScheduleModal(); });
 document.getElementById('cancelScheduleBtn').addEventListener('click',closeScheduleModal);
 document.getElementById('closeScheduleModalBtn').addEventListener('click',closeScheduleModal);
-
 document.getElementById('saveScheduleBtn').addEventListener('click',()=>{
   const name=document.getElementById('scheduleSubject').value.trim()||'(Untitled)';
   const teacherName=document.getElementById('scheduleTeacher').value.trim();
   const baseFee=document.getElementById('scheduleBaseFee').value.trim();
+  if(!state.schedules) state.schedules=[];
   if(editingScheduleId){
     const s=state.schedules.find(x=>x.id===editingScheduleId);
-    s.name=name; s.teacherName=teacherName; s.baseFee=baseFee;
+    if(s){ s.name=name; s.teacherName=teacherName; s.baseFee=baseFee; }
   }else{
-    state.schedules.push({id:uid(), grade:activeGrade, name, teacherName, baseFee, timeBlocks:[], studentIds:[]});
+    state.schedules.push({id:uid(),grade:activeGrade,name,teacherName,baseFee,timeBlocks:[],studentIds:[]});
   }
   saveData(); renderGradeScheduleRow(); renderScheduleOverview(); closeScheduleModal();
 });
@@ -464,20 +521,22 @@ document.getElementById('saveScheduleBtn').addEventListener('click',()=>{
    SCHEDULE DETAIL
    ============================================================ */
 function renderScheduleDetail(){
-  const s=state.schedules.find(x=>x.id===activeScheduleId);
+  const s=(state.schedules||[]).find(x=>x.id===activeScheduleId);
   if(!s) return;
+  const gradeLabel=s.grade?` · Grade ${s.grade}`:'';
+  topbarTitle.textContent=s.name+gradeLabel;
   document.getElementById('detailTeacher').textContent=(s.teacherName||'—')+' ✏️';
   document.getElementById('detailTeacher').style.cursor='pointer';
-  document.getElementById('scheduleNotes').value=s.notes||'';
   document.getElementById('detailFeeBtn').textContent=s.baseFee?formatFee(s.baseFee):'Tap to set';
-  // time blocks
+  document.getElementById('scheduleNotes').value=s.notes||'';
+
   const tbList=document.getElementById('detailTimeBlocks');
   tbList.innerHTML='';
   (s.timeBlocks||[]).forEach((tb,i)=>{
     const li=document.createElement('li');
     li.className='time-block-item';
     li.innerHTML=`${DAY_NAMES[tb.day]} ${formatTime(tb.start)}–${formatTime(tb.end)}
-      <button class="time-block-del" data-idx="${i}" aria-label="Remove">✕</button>`;
+      <button class="time-block-del" data-idx="${i}">✕</button>`;
     tbList.appendChild(li);
   });
   tbList.querySelectorAll('.time-block-del').forEach(btn=>{
@@ -486,16 +545,16 @@ function renderScheduleDetail(){
       saveData(); renderScheduleDetail();
     });
   });
-  // students
+
   const sl=document.getElementById('detailStudentList');
   sl.innerHTML='';
   document.getElementById('detailStudentEmpty').hidden=(s.studentIds||[]).length>0;
   (s.studentIds||[]).forEach(sid=>{
-    const st=state.students.find(x=>x.id===sid);
+    const st=(state.students||[]).find(x=>x.id===sid);
     if(!st) return;
+    const discount=st.scheduleDiscounts?.[s.id];
     const li=document.createElement('li');
     li.className='student-card';
-    const discount=st.scheduleDiscounts?.[s.id];
     li.innerHTML=`
       <div class="student-avatar">${initials(st.studentName)}</div>
       <div class="student-info">
@@ -504,37 +563,34 @@ function renderScheduleDetail(){
         </div>
         <div class="student-meta">${escapeHtml(st.parentName?'PH: '+st.parentName:'')}</div>
       </div>
-      <button class="chip" style="font-size:11px;padding:5px 10px" data-sid="${sid}">
-        ${discount?'Edit fee':'Discount'}
+      <button class="chip" style="font-size:12px;padding:5px 12px;flex-shrink:0" data-sid="${sid}">
+        ${discount?'Edit fee':'Discount ₫'}
       </button>`;
     li.querySelector('[data-sid]').addEventListener('click',e=>{
       e.stopPropagation();
       activeScheduleId=s.id;
-      openFeeModal('student', sid, s.id);
+      openFeeModal('student',sid,s.id);
     });
     li.addEventListener('click',()=>openStudentModal(sid));
     sl.appendChild(li);
   });
 }
 
-document.getElementById('detailTeacher').addEventListener('click',()=>{
-  openScheduleModal(activeScheduleId);
-});
+document.getElementById('detailTeacher').addEventListener('click',()=>openScheduleModal(activeScheduleId));
+document.getElementById('detailFeeBtn').addEventListener('click',()=>openFeeModal('schedule'));
+document.getElementById('addTimeBlockBtn').addEventListener('click',()=>openTimeBlockModal());
+document.getElementById('addStudentToScheduleBtn').addEventListener('click',()=>openAddToScheduleModal());
 document.getElementById('saveScheduleNotesBtn').addEventListener('click',()=>{
-  const s=state.schedules.find(x=>x.id===activeScheduleId);
+  const s=(state.schedules||[]).find(x=>x.id===activeScheduleId);
   if(!s) return;
   s.notes=document.getElementById('scheduleNotes').value;
   saveData();
   const btn=document.getElementById('saveScheduleNotesBtn');
-  btn.textContent='✓ Saved';
-  setTimeout(()=>btn.textContent='Lưu ghi chú',1500);
+  btn.textContent='✓ Saved'; setTimeout(()=>btn.textContent='Lưu ghi chú',1500);
 });
-document.getElementById('detailFeeBtn').addEventListener('click',()=>openFeeModal('schedule'));
-document.getElementById('addTimeBlockBtn').addEventListener('click',()=>openTimeBlockModal());
-document.getElementById('addStudentToScheduleBtn').addEventListener('click',()=>openAddToScheduleModal());
 document.getElementById('deleteScheduleDetailBtn').addEventListener('click',()=>{
   if(confirm('Delete this schedule?')){
-    state.schedules=state.schedules.filter(x=>x.id!==activeScheduleId);
+    state.schedules=(state.schedules||[]).filter(x=>x.id!==activeScheduleId);
     saveData();
     const prev=screenHistory.pop();
     if(prev) showScreen(prev.name,prev.opts);
@@ -543,122 +599,69 @@ document.getElementById('deleteScheduleDetailBtn').addEventListener('click',()=>
 });
 
 /* ============================================================
-   SCHEDULE OVERVIEW (Schedule tab)
+   SCHEDULE OVERVIEW (Lịch dạy tab)
    ============================================================ */
-/* ── Calendar view ── */
-const CAL_SLOTS=[
-  '7:00','8:30','10:00','11:30',
-  '13:30','15:00','16:30','18:00','19:30'
-];
-const CAL_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const CAL_DAY_IDX=[1,2,3,4,5,6,0]; // maps col→Date.getDay()
-
 let calViewActive=false;
-let dragData=null;
 
-function timeToMins(t){
-  if(!t) return 0;
-  const [h,m]=t.split(':').map(Number);
-  return h*60+m;
-}
-function minsToTime(m){
-  const h=Math.floor(m/60), mn=m%60;
-  return `${String(h).padStart(2,'0')}:${String(mn).padStart(2,'0')}`;
-}
-
-function renderCalendar(){
-  const table=document.getElementById('calendarTable');
-  table.innerHTML='';
-  // header row
-  const thead=document.createElement('thead');
-  const hrow=document.createElement('tr');
-  const thTime=document.createElement('th');
-  thTime.className='time-col'; thTime.textContent='Time';
-  hrow.appendChild(thTime);
-  CAL_DAYS.forEach(d=>{
-    const th=document.createElement('th'); th.textContent=d; hrow.appendChild(th);
+function populateScheduleGradeFilter(){
+  const sel=document.getElementById('scheduleGradeFilter');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">All grades</option>';
+  GRADES.forEach(g=>{
+    const opt=document.createElement('option');
+    opt.value=g; opt.textContent=`Grade ${g}`;
+    sel.appendChild(opt);
   });
-  thead.appendChild(hrow); table.appendChild(thead);
+  sel.value=cur;
+}
 
-  const tbody=document.createElement('tbody');
-  CAL_SLOTS.forEach((slot,slotIdx)=>{
-    const tr=document.createElement('tr');
-    // time label
-    const tdTime=document.createElement('td');
-    tdTime.className='time-label'; tdTime.textContent=formatTime(slot+':00'<'10'?'0'+slot:slot);
-    // fix: slot is already like '7:00'
-    tdTime.textContent=slot;
-    tr.appendChild(tdTime);
-
-    CAL_DAYS.forEach((day,dayCol)=>{
-      const td=document.createElement('td');
-      td.dataset.slot=slotIdx; td.dataset.day=CAL_DAY_IDX[dayCol];
-      // find schedules whose timeBlocks fall in this slot+day
-      const slotStart=timeToMins(CAL_SLOTS[slotIdx]);
-      const slotEnd=slotStart+90;
-      const matches=state.schedules.filter(s=>
-        (s.timeBlocks||[]).some(tb=>{
-          const tbDay=parseInt(tb.day);
-          const tbStart=timeToMins(tb.start);
-          return tbDay===CAL_DAY_IDX[dayCol] && tbStart>=slotStart && tbStart<slotEnd;
-        })
-      );
-      // render blocks side by side if multiple
-      const width=matches.length>1?`calc(${100/matches.length}% - 4px)`:undefined;
-      matches.forEach((s,mi)=>{
-        const idx=state.schedules.indexOf(s)%SCHED_COLORS.length;
-        const tb=s.timeBlocks.find(tb=>parseInt(tb.day)===CAL_DAY_IDX[dayCol]&&timeToMins(tb.start)>=slotStart&&timeToMins(tb.start)<slotEnd);
-        const block=document.createElement('div');
-        block.className='cal-block';
-        block.style.background=SCHED_COLORS[idx];
-        if(matches.length>1){
-          block.style.width=`calc(${100/matches.length}% - 4px)`;
-          block.style.left=`${mi*(100/matches.length)}%`;
-          block.style.right='auto';
-        }
-        block.style.top='2px';
-        block.style.bottom='2px';
-        block.innerHTML=`<span class="cal-block-name">${escapeHtml(s.name)}</span>
-          <span class="cal-block-time">${tb?tb.start+' – '+tb.end:''}</span>`;
-        block.draggable=true;
-        block.addEventListener('dragstart',e=>{
-          dragData={scheduleId:s.id, tbIdx:s.timeBlocks.indexOf(tb)};
-          e.dataTransfer.effectAllowed='move';
-        });
-        block.addEventListener('click',e=>{
-          e.stopPropagation();
-          activeScheduleId=s.id;
-          activeGrade=s.grade;
-          navigateTo('schedule-detail',{title:s.name,showBack:true});
-        });
-        td.appendChild(block);
-      });
-      // drag-over / drop
-      td.addEventListener('dragover',e=>{ e.preventDefault(); td.classList.add('cal-drop-target'); });
-      td.addEventListener('dragleave',()=>td.classList.remove('cal-drop-target'));
-      td.addEventListener('drop',e=>{
-        e.preventDefault(); td.classList.remove('cal-drop-target');
-        if(!dragData) return;
-        const s=state.schedules.find(x=>x.id===dragData.scheduleId);
-        if(!s||dragData.tbIdx<0) return;
-        const tb=s.timeBlocks[dragData.tbIdx];
-        if(!tb) return;
-        const dur=timeToMins(tb.end)-timeToMins(tb.start);
-        const newStart=CAL_SLOTS[parseInt(td.dataset.slot)];
-        const newEnd=minsToTime(timeToMins(newStart)+dur);
-        tb.day=parseInt(td.dataset.day);
-        tb.start=newStart;
-        tb.end=newEnd;
-        dragData=null;
-        saveData(); renderCalendar();
-      });
-      tr.appendChild(td);
+function renderScheduleOverview(){
+  populateScheduleGradeFilter();
+  const filterGrade=document.getElementById('scheduleGradeFilter').value;
+  const list=document.getElementById('scheduleList');
+  const empty=document.getElementById('scheduleEmpty');
+  list.innerHTML='';
+  const filtered=filterGrade
+    ?(state.schedules||[]).filter(s=>s.grade===parseInt(filterGrade))
+    :(state.schedules||[]);
+  empty.hidden=filtered.length>0;
+  filtered.forEach(s=>{
+    const idx=(state.schedules||[]).indexOf(s)%SCHED_COLORS.length;
+    const color=SCHED_COLORS[idx];
+    const div=document.createElement('div');
+    div.className='schedule-card-full';
+    div.style.borderLeftColor=color;
+    const times=(s.timeBlocks||[]).map(tb=>`${DAY_NAMES[tb.day]} ${formatTime(tb.start)}–${formatTime(tb.end)}`).join(' · ')||'No times set';
+    div.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="sc-name">${escapeHtml(s.name)} <span style="font-size:13px;color:var(--slate)">· Grade ${s.grade}</span></div>
+          <div class="sc-meta">${escapeHtml(s.teacherName||'No teacher')} · ${(s.studentIds||[]).length} students</div>
+          <div class="sc-meta">${times}</div>
+          <div class="sc-meta">${s.baseFee?formatFee(s.baseFee):'No fee set'}</div>
+        </div>
+        <button class="chip" style="font-size:12px;padding:5px 12px;flex-shrink:0;margin-left:10px" data-edit-id="${s.id}">Edit</button>
+      </div>`;
+    div.querySelector('[data-edit-id]').addEventListener('click',e=>{
+      e.stopPropagation();
+      activeGrade=s.grade;
+      openScheduleModal(s.id);
     });
-    tbody.appendChild(tr);
+    div.addEventListener('click',()=>{
+      activeScheduleId=s.id; activeGrade=s.grade;
+      navigateTo('schedule-detail',{title:s.name,showBack:true});
+    });
+    list.appendChild(div);
   });
-  table.appendChild(tbody);
+  if(calViewActive) renderCalendar();
 }
 
+document.getElementById('scheduleGradeFilter').addEventListener('change',renderScheduleOverview);
+document.getElementById('addScheduleGlobalBtn').addEventListener('click',()=>{
+  const filterGrade=document.getElementById('scheduleGradeFilter').value;
+  activeGrade=filterGrade?parseInt(filterGrade):1;
+  openScheduleModal();
+});
 document.getElementById('viewListBtn').addEventListener('click',()=>{
   calViewActive=false;
   document.getElementById('scheduleListView').hidden=false;
@@ -674,62 +677,123 @@ document.getElementById('viewCalBtn').addEventListener('click',()=>{
   document.getElementById('viewCalBtn').classList.add('active');
   renderCalendar();
 });
-function populateScheduleGradeFilter(){
-  const sel = document.getElementById('scheduleGradeFilter');
-  const cur = sel.value;
-  sel.innerHTML='<option value="">All grades</option>';
-  GRADES.forEach(g=>{
-    const opt=document.createElement('option');
-    opt.value=g; opt.textContent=`Grade ${g}`;
-    sel.appendChild(opt);
-  });
-  sel.value=cur;
-}
-function renderScheduleOverview(){
-  populateScheduleGradeFilter();
-  const filterGrade = document.getElementById('scheduleGradeFilter').value;
-  const list=document.getElementById('scheduleList');
-  const empty=document.getElementById('scheduleEmpty');
-  list.innerHTML='';
-  const filtered = filterGrade
-    ? state.schedules.filter(s=>s.grade===parseInt(filterGrade))
-    : state.schedules;
-  empty.hidden=filtered.length>0;
-  filtered.forEach((s,i)=>{
-    const color = SCHED_COLORS[state.schedules.indexOf(s) % SCHED_COLORS.length];
-    const div=document.createElement('div');
-    div.className='schedule-card-full';
-    div.style.borderLeftColor=color;
-    const times=(s.timeBlocks||[]).map(tb=>`${DAY_NAMES[tb.day]} ${formatTime(tb.start)}–${formatTime(tb.end)}`).join(' · ')||'No times set';
-    div.innerHTML=`
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
-          <div class="sc-name">${escapeHtml(s.name)} <span style="font-size:12px;color:var(--slate)">· Grade ${s.grade}</span></div>
-          <div class="sc-meta">${escapeHtml(s.teacherName||'No teacher')} · ${(s.studentIds||[]).length} students</div>
-          <div class="sc-meta">${times}</div>
-          <div class="sc-meta">${s.baseFee?formatFee(s.baseFee):'No fee set'}</div>
-        </div>
-        <button class="chip" style="font-size:12px;padding:5px 12px;flex-shrink:0;margin-left:10px" data-edit-id="${s.id}">Edit</button>
-      </div>`;
-    div.querySelector('[data-edit-id]').addEventListener('click',e=>{
-      e.stopPropagation();
-      activeGrade=s.grade;
-      openScheduleModal(s.id);
+
+/* ============================================================
+   CALENDAR TIMETABLE
+   1-hour slots, morning 7:00–12:00, lunch break, afternoon 13:00–22:00
+   Schedules span proportionally based on their duration
+   ============================================================ */
+const MORNING_SLOTS=['7:00','8:00','9:00','10:00','11:00'];
+const AFTERNOON_SLOTS=['13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
+const CAL_DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const CAL_DAY_IDX=[1,2,3,4,5,6,0];
+const SLOT_HEIGHT=54; // px per 1-hour row
+
+function renderCalendar(){
+  const table=document.getElementById('calendarTable');
+  table.innerHTML='';
+
+  // header
+  const thead=document.createElement('thead');
+  const hrow=document.createElement('tr');
+  const thTime=document.createElement('th');
+  thTime.className='time-col'; thTime.textContent='';
+  hrow.appendChild(thTime);
+  CAL_DAYS.forEach(d=>{ const th=document.createElement('th'); th.textContent=d; hrow.appendChild(th); });
+  thead.appendChild(hrow); table.appendChild(thead);
+
+  const tbody=document.createElement('tbody');
+  const allSlots=[...MORNING_SLOTS,'LUNCH',...AFTERNOON_SLOTS];
+
+  allSlots.forEach((slot)=>{
+    const tr=document.createElement('tr');
+
+    // time label cell
+    const tdTime=document.createElement('td');
+    tdTime.className='time-label';
+
+    if(slot==='LUNCH'){
+      tdTime.textContent='';
+      tr.style.background='var(--chalk-dim)';
+      tr.style.height='32px';
+      const lunchTd=document.createElement('td');
+      lunchTd.colSpan=7;
+      lunchTd.style.cssText='text-align:center;font-weight:700;font-size:14px;color:var(--slate);padding:6px;border:1px solid var(--chalk-dim)';
+      lunchTd.textContent='🌙 Giờ nghỉ trưa';
+      tr.appendChild(tdTime); tr.appendChild(lunchTd);
+      tbody.appendChild(tr);
+      return;
+    }
+
+    tdTime.textContent=slot;
+    tr.appendChild(tdTime);
+
+    const slotStartMins=timeToMins(slot);
+    const slotEndMins=slotStartMins+60;
+
+    CAL_DAYS.forEach((day,dayCol)=>{
+      const td=document.createElement('td');
+      td.style.position='relative';
+      td.style.height=SLOT_HEIGHT+'px';
+
+      // find schedules whose timeBlocks overlap this slot+day
+      const dayIdx=CAL_DAY_IDX[dayCol];
+      const matches=(state.schedules||[]).filter(s=>
+        (s.timeBlocks||[]).some(tb=>{
+          if(parseInt(tb.day)!==dayIdx) return false;
+          const tbStart=timeToMins(tb.start);
+          const tbEnd=timeToMins(tb.end);
+          return tbStart<slotEndMins && tbEnd>slotStartMins;
+        })
+      );
+
+      const colWidth=matches.length>1?`${Math.floor(100/matches.length)}%`:'100%';
+
+      matches.forEach((s,mi)=>{
+        const tb=s.timeBlocks.find(tb=>
+          parseInt(tb.day)===dayIdx&&timeToMins(tb.start)<slotEndMins&&timeToMins(tb.end)>slotStartMins
+        );
+        if(!tb) return;
+
+        const tbStartMins=timeToMins(tb.start);
+        const tbEndMins=timeToMins(tb.end);
+
+        // calculate pixel position within this cell
+        const overlapStart=Math.max(tbStartMins,slotStartMins);
+        const overlapEnd=Math.min(tbEndMins,slotEndMins);
+        const topPct=((overlapStart-slotStartMins)/60)*100;
+        const heightPct=((overlapEnd-overlapStart)/60)*100;
+
+        const idx=(state.schedules||[]).indexOf(s)%SCHED_COLORS.length;
+        const block=document.createElement('div');
+        block.className='cal-block';
+        block.style.background=SCHED_COLORS[idx];
+        block.style.top=topPct+'%';
+        block.style.height=heightPct+'%';
+        block.style.left=`calc(${mi*(100/matches.length)}% + 2px)`;
+        block.style.right='auto';
+        block.style.width=`calc(${colWidth} - 4px)`;
+        block.style.bottom='auto';
+
+        // only show label on the first cell of a block
+        if(tbStartMins>=slotStartMins){
+          block.innerHTML=`<span class="cal-block-name">${escapeHtml(s.name)}</span>
+            <span class="cal-block-time">${tb.start}–${tb.end}</span>`;
+        }
+
+        block.addEventListener('click',e=>{
+          e.stopPropagation();
+          activeScheduleId=s.id; activeGrade=s.grade;
+          navigateTo('schedule-detail',{title:s.name,showBack:true});
+        });
+        td.appendChild(block);
+      });
+      tr.appendChild(td);
     });
-    div.addEventListener('click',()=>{
-      activeScheduleId=s.id;
-      activeGrade=s.grade;
-      navigateTo('schedule-detail',{title:s.name,showBack:true});
-    });
-    list.appendChild(div);
+    tbody.appendChild(tr);
   });
+  table.appendChild(tbody);
 }
-document.getElementById('scheduleGradeFilter').addEventListener('change',renderScheduleOverview);
-document.getElementById('addScheduleGlobalBtn').addEventListener('click',()=>{
-  const filterGrade = document.getElementById('scheduleGradeFilter').value;
-  activeGrade = filterGrade ? parseInt(filterGrade) : 1;
-  openScheduleModal();
-});
 
 /* ============================================================
    TIME BLOCK MODAL
@@ -743,22 +807,21 @@ function openTimeBlockModal(){
   timeBlockModal.hidden=false;
 }
 function autoFillEndTime(){
-  const startVal = document.getElementById('timeBlockStart').value;
+  const startVal=document.getElementById('timeBlockStart').value;
   if(!startVal) return;
-  const [h,m] = startVal.split(':').map(Number);
-  const totalMins = h*60 + m + 90; // +1.5 hours = +90 mins
-  const endH = Math.floor(totalMins/60) % 24;
-  const endM = totalMins % 60;
-  document.getElementById('timeBlockEnd').value =
-    `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+  const[h,m]=startVal.split(':').map(Number);
+  const totalMins=h*60+m+90;
+  const endH=Math.floor(totalMins/60)%24;
+  const endM=totalMins%60;
+  document.getElementById('timeBlockEnd').value=`${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
 }
-document.getElementById('timeBlockStart').addEventListener('change', autoFillEndTime);
 function closeTimeBlockModal(){ timeBlockModal.hidden=true; }
 timeBlockModal.addEventListener('click',e=>{ if(e.target===timeBlockModal) closeTimeBlockModal(); });
 document.getElementById('cancelTimeBlockBtn').addEventListener('click',closeTimeBlockModal);
 document.getElementById('closeTimeBlockModalBtn').addEventListener('click',closeTimeBlockModal);
+document.getElementById('timeBlockStart').addEventListener('change',autoFillEndTime);
 document.getElementById('saveTimeBlockBtn').addEventListener('click',()=>{
-  const s=state.schedules.find(x=>x.id===activeScheduleId);
+  const s=(state.schedules||[]).find(x=>x.id===activeScheduleId);
   if(!s) return;
   if(!s.timeBlocks) s.timeBlocks=[];
   s.timeBlocks.push({
@@ -767,23 +830,24 @@ document.getElementById('saveTimeBlockBtn').addEventListener('click',()=>{
     end:document.getElementById('timeBlockEnd').value,
   });
   saveData(); renderScheduleDetail(); closeTimeBlockModal();
+  if(calViewActive) renderCalendar();
 });
 
 /* ============================================================
    FEE MODAL
    ============================================================ */
 const feeModal=document.getElementById('feeModal');
-function openFeeModal(type, studentId=null, scheduleId=null){
+function openFeeModal(type,studentId=null,scheduleId=null){
   closeAllModals();
-  feeModalContext={type, studentId, scheduleId: scheduleId||activeScheduleId};
-  const s=state.schedules.find(x=>x.id===feeModalContext.scheduleId);
+  feeModalContext={type,studentId,scheduleId:scheduleId||activeScheduleId};
+  const s=(state.schedules||[]).find(x=>x.id===feeModalContext.scheduleId);
   if(type==='schedule'){
     document.getElementById('feeModalTitle').textContent='Edit Base Fee';
     document.getElementById('feeModalBaseLabel').textContent='Học phí / tháng (base fee for all students)';
     document.getElementById('feeModalInput').value=s?.baseFee||'';
     document.getElementById('feeModalNote').textContent='This applies to all students unless individually discounted.';
   }else{
-    const st=state.students.find(x=>x.id===studentId);
+    const st=(state.students||[]).find(x=>x.id===studentId);
     document.getElementById('feeModalTitle').textContent=`Discount — ${st?.studentName||''}`;
     document.getElementById('feeModalBaseLabel').textContent=`Discounted fee (base: ${formatFee(s?.baseFee)})`;
     document.getElementById('feeModalInput').value=st?.scheduleDiscounts?.[feeModalContext.scheduleId]||'';
@@ -799,10 +863,10 @@ document.getElementById('closeFeeModalBtn').addEventListener('click',closeFeeMod
 document.getElementById('saveFeeBtn').addEventListener('click',()=>{
   const val=document.getElementById('feeModalInput').value.trim();
   if(feeModalContext.type==='schedule'){
-    const s=state.schedules.find(x=>x.id===feeModalContext.scheduleId);
+    const s=(state.schedules||[]).find(x=>x.id===feeModalContext.scheduleId);
     if(s) s.baseFee=val;
   }else{
-    const st=state.students.find(x=>x.id===feeModalContext.studentId);
+    const st=(state.students||[]).find(x=>x.id===feeModalContext.studentId);
     if(st){
       if(!st.scheduleDiscounts) st.scheduleDiscounts={};
       if(val) st.scheduleDiscounts[feeModalContext.scheduleId]=val;
@@ -818,12 +882,12 @@ document.getElementById('saveFeeBtn').addEventListener('click',()=>{
 const addToScheduleModal=document.getElementById('addToScheduleModal');
 function openAddToScheduleModal(){
   closeAllModals();
-  renderAddToScheduleList('');
   document.getElementById('addToScheduleSearch').value='';
+  renderAddToScheduleList('');
   addToScheduleModal.hidden=false;
 }
 function renderAddToScheduleList(q){
-  const s=state.schedules.find(x=>x.id===activeScheduleId);
+  const s=(state.schedules||[]).find(x=>x.id===activeScheduleId);
   const list=document.getElementById('addToScheduleList');
   list.innerHTML='';
   studentsInGrade(activeGrade)
@@ -848,7 +912,7 @@ document.getElementById('cancelAddToScheduleBtn').addEventListener('click',close
 document.getElementById('closeAddToScheduleModalBtn').addEventListener('click',closeAddToScheduleModal);
 document.getElementById('addToScheduleSearch').addEventListener('input',e=>renderAddToScheduleList(e.target.value));
 document.getElementById('saveAddToScheduleBtn').addEventListener('click',()=>{
-  const s=state.schedules.find(x=>x.id===activeScheduleId);
+  const s=(state.schedules||[]).find(x=>x.id===activeScheduleId);
   if(!s) return;
   s.studentIds=[];
   document.querySelectorAll('#addToScheduleList li.selected').forEach(li=>s.studentIds.push(li.dataset.sid));
@@ -856,47 +920,97 @@ document.getElementById('saveAddToScheduleBtn').addEventListener('click',()=>{
 });
 
 /* ============================================================
+   ATTENDANCE
+   ============================================================ */
+const attendanceDate=document.getElementById('attendanceDate');
+const attendanceList=document.getElementById('attendanceList');
+const attendanceEmpty=document.getElementById('attendanceEmpty');
+function todayStr(){
+  const d=new Date(); const off=d.getTimezoneOffset();
+  return new Date(d.getTime()-off*60000).toISOString().slice(0,10);
+}
+attendanceDate.value=todayStr();
+function renderAttendance(){
+  const date=attendanceDate.value;
+  const key=`${date}|${activeGrade}`;
+  if(!state.attendance) state.attendance={};
+  if(!state.attendance[key]) state.attendance[key]={};
+  const dayRecord=state.attendance[key];
+  const students=studentsInGrade(activeGrade).sort((a,b)=>a.studentName.localeCompare(b.studentName));
+  attendanceEmpty.hidden=students.length>0;
+  attendanceList.innerHTML='';
+  students.forEach(s=>{
+    const status=dayRecord[s.id]||null;
+    const li=document.createElement('li');
+    li.className='attendance-row';
+    li.innerHTML=`<span class="student-name">${escapeHtml(s.studentName)}</span>
+      <button class="status-btn present-btn ${status==='present'?'present':''}" aria-label="Present">✓</button>
+      <button class="status-btn absent-btn ${status==='absent'?'absent':''}" aria-label="Absent">✕</button>`;
+    li.querySelector('.present-btn').addEventListener('click',()=>setAttendance(key,s.id,'present'));
+    li.querySelector('.absent-btn').addEventListener('click',()=>setAttendance(key,s.id,'absent'));
+    attendanceList.appendChild(li);
+  });
+}
+function setAttendance(key,studentId,status){
+  if(!state.attendance[key]) state.attendance[key]={};
+  const rec=state.attendance[key];
+  if(rec[studentId]===status) delete rec[studentId];
+  else rec[studentId]=status;
+  saveData(); renderAttendance();
+}
+document.getElementById('markAllPresent').addEventListener('click',()=>{
+  const key=`${attendanceDate.value}|${activeGrade}`;
+  if(!state.attendance) state.attendance={};
+  if(!state.attendance[key]) state.attendance[key]={};
+  studentsInGrade(activeGrade).forEach(s=>state.attendance[key][s.id]='present');
+  saveData(); renderAttendance();
+});
+document.getElementById('markAllAbsent').addEventListener('click',()=>{
+  const key=`${attendanceDate.value}|${activeGrade}`;
+  if(!state.attendance) state.attendance={};
+  if(!state.attendance[key]) state.attendance[key]={};
+  studentsInGrade(activeGrade).forEach(s=>state.attendance[key][s.id]='absent');
+  saveData(); renderAttendance();
+});
+attendanceDate.addEventListener('change',renderAttendance);
+
+/* ============================================================
    HỌC PHÍ
    ============================================================ */
-const MONTH_NAMES=['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
-let activeHocPhiMonth = new Date().getMonth(); // 0-indexed
-let activeHocPhiFilter = 'chua'; // 'chua' | 'da' | 'tat-ca' | 'chua-lich'
+let activeHocPhiMonth=new Date().getMonth();
+let activeHocPhiFilter='chua';
+let hpActiveScheduleFilter=null;
 
-function feeKey(studentId, scheduleId, monthStr){ return `${monthStr}|${studentId}|${scheduleId}`; }
-function monthStr(monthIdx){ return `${new Date().getFullYear()}-${String(monthIdx+1).padStart(2,'0')}`; }
-
-function isPaid(studentId, scheduleId, monthIdx){
-  return !!state.feePayments[feeKey(studentId, scheduleId, monthStr(monthIdx))];
+function feeKey(studentId,scheduleId,mStr){ return `${mStr}|${studentId}|${scheduleId}`; }
+function monthStr(idx){ return `${new Date().getFullYear()}-${String(idx+1).padStart(2,'0')}`; }
+function isPaid(studentId,scheduleId,monthIdx){
+  return !!(state.feePayments||{})[feeKey(studentId,scheduleId,monthStr(monthIdx))];
 }
-function togglePaid(studentId, scheduleId, monthIdx){
-  const k = feeKey(studentId, scheduleId, monthStr(monthIdx));
+function togglePaid(studentId,scheduleId,monthIdx){
+  if(!state.feePayments) state.feePayments={};
+  const k=feeKey(studentId,scheduleId,monthStr(monthIdx));
   if(state.feePayments[k]) delete state.feePayments[k];
   else state.feePayments[k]=true;
   saveData();
 }
-
-function studentFeeStatus(s, monthIdx){
-  const scheds = state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
+function studentFeeStatus(s,monthIdx){
+  const scheds=(state.schedules||[]).filter(sc=>(sc.studentIds||[]).includes(s.id));
   if(scheds.length===0) return 'no-schedule';
-  const paidAll = scheds.every(sc=>isPaid(s.id, sc.id, monthIdx));
-  const paidSome = scheds.some(sc=>isPaid(s.id, sc.id, monthIdx));
+  const paidAll=scheds.every(sc=>isPaid(s.id,sc.id,monthIdx));
+  const paidSome=scheds.some(sc=>isPaid(s.id,sc.id,monthIdx));
   if(paidAll) return 'paid';
   if(paidSome) return 'partial';
   return 'unpaid';
 }
-
 function isOverdue(s){
   if(!s.enrollDate) return false;
-  const enroll = new Date(s.enrollDate);
-  const now = new Date();
-  const diffDays = Math.floor((now - enroll) / (1000*60*60*24));
-  return diffDays >= 40;
+  const enroll=new Date(s.enrollDate);
+  const now=new Date();
+  return Math.floor((now-enroll)/(1000*60*60*24))>=40;
 }
-
 function renderHocPhi(){
   if(!state.feePayments) state.feePayments={};
-  // month row
-  const monthRow = document.getElementById('monthRow');
+  const monthRow=document.getElementById('monthRow');
   monthRow.innerHTML='';
   MONTH_NAMES.forEach((m,i)=>{
     const btn=document.createElement('button');
@@ -905,78 +1019,58 @@ function renderHocPhi(){
     btn.addEventListener('click',()=>{ activeHocPhiMonth=i; renderHocPhi(); });
     monthRow.appendChild(btn);
   });
-
-  const allStudents = state.students;
-  const withSchedule = allStudents.filter(s=>state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
-  const noSchedule = allStudents.filter(s=>!state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
-
-  const unpaid = withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)!=='paid');
-  const paid = withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)==='paid');
-
+  const withSchedule=(state.students||[]).filter(s=>(state.schedules||[]).some(sc=>(sc.studentIds||[]).includes(s.id)));
+  const noSchedule=(state.students||[]).filter(s=>!(state.schedules||[]).some(sc=>(sc.studentIds||[]).includes(s.id)));
+  const unpaid=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)!=='paid');
+  const paid=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)==='paid');
   document.getElementById('hpCountChuaDong').textContent=unpaid.length;
   document.getElementById('hpCountDaDong').textContent=paid.length;
   document.getElementById('hpCountTatCa').textContent=withSchedule.length;
   document.getElementById('hpCountChuaCoLich').textContent=noSchedule.length;
-
   document.getElementById('hpBoxChuaDong').onclick=()=>{ activeHocPhiFilter='chua'; navigateTo('hoc-phi-detail',{title:'Chưa đóng học phí',showBack:true}); };
   document.getElementById('hpBoxDaDong').onclick=()=>{ activeHocPhiFilter='da'; navigateTo('hoc-phi-detail',{title:'Đã đóng',showBack:true}); };
   document.getElementById('hpBoxTatCa').onclick=()=>{ activeHocPhiFilter='tat-ca'; navigateTo('hoc-phi-detail',{title:'Tất cả',showBack:true}); };
   document.getElementById('hpBoxChuaCoLich').onclick=()=>{ activeHocPhiFilter='chua-lich'; navigateTo('hoc-phi-detail',{title:'Học sinh chưa có lịch học',showBack:true}); };
 }
 
-let hpActiveScheduleFilter=null; // null=show all
-
 function renderHocPhiDetail(){
   if(!state.feePayments) state.feePayments={};
-  const allStudents = state.students;
-  const withSchedule = allStudents.filter(s=>state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
-  const noSchedule = allStudents.filter(s=>!state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
-
-  // schedule chip row
+  const withSchedule=(state.students||[]).filter(s=>(state.schedules||[]).some(sc=>(sc.studentIds||[]).includes(s.id)));
+  const noSchedule=(state.students||[]).filter(s=>!(state.schedules||[]).some(sc=>(sc.studentIds||[]).includes(s.id)));
   const chipRow=document.getElementById('hpScheduleChipRow');
   chipRow.innerHTML='';
   if(activeHocPhiFilter!=='chua-lich'){
-    state.schedules.forEach((sc,i)=>{
+    (state.schedules||[]).forEach((sc,i)=>{
       const color=SCHED_COLORS[i%SCHED_COLORS.length];
       const btn=document.createElement('button');
       btn.className='hp-sched-chip'+(hpActiveScheduleFilter&&hpActiveScheduleFilter!==sc.id?' dim':'');
       btn.style.background=color;
       btn.textContent=sc.name;
-      btn.addEventListener('click',()=>{
-        hpActiveScheduleFilter=hpActiveScheduleFilter===sc.id?null:sc.id;
-        renderHocPhiDetail();
-      });
+      btn.addEventListener('click',()=>{ hpActiveScheduleFilter=hpActiveScheduleFilter===sc.id?null:sc.id; renderHocPhiDetail(); });
       chipRow.appendChild(btn);
     });
   }
-
   let list=[];
   if(activeHocPhiFilter==='chua') list=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)!=='paid');
   else if(activeHocPhiFilter==='da') list=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)==='paid');
   else if(activeHocPhiFilter==='tat-ca') list=withSchedule;
   else if(activeHocPhiFilter==='chua-lich') list=noSchedule;
-
-  // filter by active schedule chip
-  if(hpActiveScheduleFilter){
-    list=list.filter(s=>(state.schedules.find(sc=>sc.id===hpActiveScheduleFilter)?.studentIds||[]).includes(s.id));
-  }
-
+  if(hpActiveScheduleFilter) list=list.filter(s=>((state.schedules||[]).find(sc=>sc.id===hpActiveScheduleFilter)?.studentIds||[]).includes(s.id));
   list.sort((a,b)=>a.studentName.localeCompare(b.studentName));
   const ul=document.getElementById('hocPhiStudentList');
   ul.innerHTML='';
   document.getElementById('hocPhiEmpty').hidden=list.length>0;
-
   list.forEach(s=>{
     const status=studentFeeStatus(s,activeHocPhiMonth);
     const overdue=isOverdue(s)&&status!=='paid';
     const partial=status==='partial';
-    const scheds=state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
-    const row=document.createElement('div');
-    row.className='hocphi-student-row'+(overdue?' overdue':'');
+    const scheds=(state.schedules||[]).filter(sc=>(sc.studentIds||[]).includes(s.id));
     const totalFee=scheds.reduce((sum,sc)=>{
       const fee=parseInt((s.scheduleDiscounts?.[sc.id])||sc.baseFee||0)||0;
       return sum+fee;
     },0);
+    const row=document.createElement('div');
+    row.className='hocphi-student-row'+(overdue?' overdue':'');
     row.innerHTML=`
       <div class="student-avatar">${initials(s.studentName)}</div>
       <span class="hp-name">${escapeHtml(s.studentName)}</span>
@@ -984,15 +1078,17 @@ function renderHocPhiDetail(){
       <span class="hp-total">${totalFee?formatFee(totalFee):''}</span>
       <div class="student-color-strips">
         ${scheds.map(sc=>{
-          const idx=state.schedules.indexOf(sc)%SCHED_COLORS.length;
+          const idx=(state.schedules||[]).indexOf(sc)%SCHED_COLORS.length;
           const paid=isPaid(s.id,sc.id,activeHocPhiMonth);
-          return `<div class="pay-circle${paid?' paid':''}" data-sid="${s.id}" data-scid="${sc.id}" style="border-color:${SCHED_COLORS[idx]};${paid?'background:'+SCHED_COLORS[idx]+';border-color:'+SCHED_COLORS[idx]:''}" title="${sc.name}">✓</div>`;
+          return `<div class="pay-circle${paid?' paid':''}" data-sid="${s.id}" data-scid="${sc.id}"
+            style="border-color:${SCHED_COLORS[idx]};${paid?'background:'+SCHED_COLORS[idx]+';border-color:'+SCHED_COLORS[idx]:''}"
+            title="${sc.name}">✓</div>`;
         }).join('')}
       </div>`;
     row.querySelectorAll('.pay-circle').forEach(btn=>{
       btn.addEventListener('click',e=>{
         e.stopPropagation();
-        togglePaid(btn.dataset.sid, btn.dataset.scid, activeHocPhiMonth);
+        togglePaid(btn.dataset.sid,btn.dataset.scid,activeHocPhiMonth);
         renderHocPhiDetail();
       });
     });
@@ -1001,22 +1097,20 @@ function renderHocPhiDetail(){
   });
 }
 
-// Học phí student detail modal
 const hocPhiStudentModal=document.getElementById('hocPhiStudentModal');
 function openHocPhiStudentModal(studentId){
   closeAllModals();
-  const s=state.students.find(x=>x.id===studentId);
+  const s=(state.students||[]).find(x=>x.id===studentId);
   document.getElementById('hocPhiStudentName').textContent=s.studentName;
-  document.getElementById('hocPhiStudentEnroll').textContent=
-    s.enrollDate?`Ngày nhập học: ${s.enrollDate}`:'Chưa có ngày nhập học';
-  const scheds=state.schedules.filter(sc=>(sc.studentIds||[]).includes(studentId));
+  document.getElementById('hocPhiStudentEnroll').textContent=s.enrollDate?`Ngày nhập học: ${s.enrollDate}`:'Chưa có ngày nhập học';
+  const scheds=(state.schedules||[]).filter(sc=>(sc.studentIds||[]).includes(studentId));
   const ul=document.getElementById('hocPhiScheduleList');
   ul.innerHTML='';
   if(scheds.length===0){
     ul.innerHTML='<li style="font-size:14px;color:var(--slate)">Chưa có lịch học nào.</li>';
   }
   scheds.forEach(sc=>{
-    const idx=state.schedules.indexOf(sc)%SCHED_COLORS.length;
+    const idx=(state.schedules||[]).indexOf(sc)%SCHED_COLORS.length;
     const discount=s.scheduleDiscounts?.[sc.id];
     const fee=discount||sc.baseFee||'—';
     const paid=isPaid(studentId,sc.id,activeHocPhiMonth);
@@ -1028,7 +1122,8 @@ function openHocPhiStudentModal(studentId){
         <div class="sched-sname">${escapeHtml(sc.name)}</div>
         <div class="sched-sfee">${formatFee(fee)}${discount?' (giảm)':''}</div>
       </div>
-      <div class="pay-circle${paid?' paid':''}" style="${paid?'background:'+SCHED_COLORS[idx]+';border-color:'+SCHED_COLORS[idx]:'border-color:'+SCHED_COLORS[idx]}">✓</div>`;
+      <div class="pay-circle${paid?' paid':''}"
+        style="${paid?'background:'+SCHED_COLORS[idx]+';border-color:'+SCHED_COLORS[idx]:'border-color:'+SCHED_COLORS[idx]}">✓</div>`;
     li.querySelector('.pay-circle').addEventListener('click',e=>{
       e.stopPropagation();
       togglePaid(studentId,sc.id,activeHocPhiMonth);
@@ -1045,22 +1140,15 @@ document.getElementById('closeHocPhiStudentModalBtn').addEventListener('click',(
 /* ============================================================
    GIÁO VIÊN
    ============================================================ */
-let editingTeacherId=null;
-
 function renderGiaoVien(){
   if(!state.teachers) state.teachers=[];
   const list=document.getElementById('teacherList');
   list.innerHTML='';
   document.getElementById('teacherEmpty').hidden=state.teachers.length>0;
-
   state.teachers.forEach(t=>{
-    // find matching schedules by teacher name
-    const myScheds=state.schedules.filter(s=>
-      s.teacherName && s.teacherName.trim().toLowerCase()===t.name.trim().toLowerCase()
-    );
+    const myScheds=(state.schedules||[]).filter(s=>s.teacherName&&s.teacherName.trim().toLowerCase()===t.name.trim().toLowerCase());
     const studentCount=new Set(myScheds.flatMap(s=>s.studentIds||[])).size;
     const schedNames=myScheds.map(s=>s.name).join(', ')||'Chưa có lịch';
-
     const card=document.createElement('div');
     card.className='teacher-card';
     card.innerHTML=`
@@ -1078,11 +1166,11 @@ function renderGiaoVien(){
 function renderTeacherScheduleChecklist(teacherName){
   const cl=document.getElementById('teacherScheduleChecklist');
   cl.innerHTML='';
-  if(state.schedules.length===0){
+  if((state.schedules||[]).length===0){
     cl.innerHTML='<li style="font-size:14px;color:var(--slate);padding:6px 0">No schedules yet</li>';
     return;
   }
-  state.schedules.forEach((s,i)=>{
+  (state.schedules||[]).forEach((s,i)=>{
     const linked=s.teacherName&&s.teacherName.trim().toLowerCase()===(teacherName||'').trim().toLowerCase();
     const li=document.createElement('li');
     li.className=linked?'selected':'';
@@ -1120,12 +1208,10 @@ function openTeacherModal(id=null){
   setTimeout(()=>document.getElementById('teacherName').focus(),50);
 }
 function closeTeacherModal(){ document.getElementById('teacherModal').hidden=true; editingTeacherId=null; }
-
 document.getElementById('addTeacherBtn').addEventListener('click',()=>openTeacherModal());
 document.getElementById('cancelTeacherBtn').addEventListener('click',closeTeacherModal);
 document.getElementById('closeTeacherModalBtn').addEventListener('click',closeTeacherModal);
 document.getElementById('teacherModal').addEventListener('click',e=>{ if(e.target===document.getElementById('teacherModal')) closeTeacherModal(); });
-
 document.getElementById('saveTeacherBtn').addEventListener('click',()=>{
   if(!state.teachers) state.teachers=[];
   const name=document.getElementById('teacherName').value.trim()||'(No name)';
@@ -1136,16 +1222,14 @@ document.getElementById('saveTeacherBtn').addEventListener('click',()=>{
   }else{
     state.teachers.push({id:uid(),name,phone});
   }
-  // apply schedule links from checklist
   document.querySelectorAll('#teacherScheduleChecklist li[data-schedule-id]').forEach(li=>{
-    const sc=state.schedules.find(x=>x.id===li.dataset.scheduleId);
+    const sc=(state.schedules||[]).find(x=>x.id===li.dataset.scheduleId);
     if(!sc) return;
     if(li.classList.contains('selected')) sc.teacherName=name;
     else if(sc.teacherName&&sc.teacherName.trim().toLowerCase()===name.trim().toLowerCase()) sc.teacherName='';
   });
   saveData(); renderGiaoVien(); closeTeacherModal();
 });
-
 document.getElementById('deleteTeacherBtn').addEventListener('click',()=>{
   if(!editingTeacherId) return;
   if(confirm('Xóa giáo viên này?')){
@@ -1153,75 +1237,100 @@ document.getElementById('deleteTeacherBtn').addEventListener('click',()=>{
     saveData(); renderGiaoVien(); closeTeacherModal();
   }
 });
-/* ============================================================
-   ATTENDANCE
-   ============================================================ */
-const attendanceDate=document.getElementById('attendanceDate');
-const attendanceList=document.getElementById('attendanceList');
-const attendanceEmpty=document.getElementById('attendanceEmpty');
-function todayStr(){
-  const d=new Date(); const off=d.getTimezoneOffset();
-  return new Date(d.getTime()-off*60000).toISOString().slice(0,10);
-}
-attendanceDate.value=todayStr();
-function renderAttendance(){
-  const date=attendanceDate.value;
-  const key=`${date}|${activeGrade}`;
-  if(!state.attendance[key]) state.attendance[key]={};
-  const dayRecord=state.attendance[key];
-  const students=studentsInGrade(activeGrade).sort((a,b)=>a.studentName.localeCompare(b.studentName));
-  attendanceEmpty.hidden=students.length>0;
-  attendanceList.innerHTML='';
-  students.forEach(s=>{
-    const status=dayRecord[s.id]||null;
-    const li=document.createElement('li');
-    li.className='attendance-row';
-    li.innerHTML=`
-      <span class="student-name">${escapeHtml(s.studentName)}</span>
-      <button class="status-btn present-btn ${status==='present'?'present':''}" aria-label="Present">✓</button>
-      <button class="status-btn absent-btn ${status==='absent'?'absent':''}" aria-label="Absent">✕</button>`;
-    li.querySelector('.present-btn').addEventListener('click',()=>setAttendance(key,s.id,'present'));
-    li.querySelector('.absent-btn').addEventListener('click',()=>setAttendance(key,s.id,'absent'));
-    attendanceList.appendChild(li);
-  });
-}
-function setAttendance(key,studentId,status){
-  const rec=state.attendance[key];
-  if(rec[studentId]===status) delete rec[studentId];
-  else rec[studentId]=status;
-  saveData(); renderAttendance();
-}
-document.getElementById('markAllPresent').addEventListener('click',()=>{
-  const key=`${attendanceDate.value}|${activeGrade}`;
-  if(!state.attendance[key]) state.attendance[key]={};
-  studentsInGrade(activeGrade).forEach(s=>state.attendance[key][s.id]='present');
-  saveData(); renderAttendance();
-});
-document.getElementById('markAllAbsent').addEventListener('click',()=>{
-  const key=`${attendanceDate.value}|${activeGrade}`;
-  if(!state.attendance[key]) state.attendance[key]={};
-  studentsInGrade(activeGrade).forEach(s=>state.attendance[key][s.id]='absent');
-  saveData(); renderAttendance();
-});
-attendanceDate.addEventListener('change',renderAttendance);
 
 /* ============================================================
-   NAME WHEEL
+   NAME WHEEL — grouped by schedule
    ============================================================ */
+let activeWheelScheduleId=null;
+let wheelCustomList=null; // null = use schedule's students, array = manually edited
+
+function renderWheelGrades(){
+  const list=document.getElementById('wheelGradeList');
+  if(!list) return;
+  list.innerHTML='';
+  GRADES.forEach(g=>{
+    const count=studentsInGrade(g).length;
+    const li=document.createElement('li');
+    li.className='grade-card';
+    li.innerHTML=`<span class="grade-num">Grade ${g}</span>
+      <span class="grade-label">${count} student${count===1?'':'s'}</span>`;
+    li.addEventListener('click',()=>{
+      activeGrade=g;
+      navigateTo('wheel',{title:`Grade ${g} · Wheel`,showBack:true});
+    });
+    list.appendChild(li);
+  });
+}
+
 const wheelCanvas=document.getElementById('wheelCanvas');
 const ctx=wheelCanvas.getContext('2d');
 const wheelResult=document.getElementById('wheelResult');
 const wheelEmpty=document.getElementById('wheelEmpty');
 const removeOnPick=document.getElementById('removeOnPick');
 const spinBtn=document.getElementById('spinBtn');
-const WHEEL_COLORS=['#2F4538','#3D5A48','#E8B84B','#C45B4D','#5C6B66','#7A8F82'];
+const WHEEL_COLORS=SCHED_COLORS;
 let currentRotation=0;
 let spinning=false;
-function getWheelStudents(){
-  const removed=state.wheelRemoved[activeGrade]||[];
-  return studentsInGrade(activeGrade).filter(s=>!removed.includes(s.id));
+
+function renderWheel(){
+  // build schedule chips for this grade inside wheel screen
+  let chipContainer=document.getElementById('wheelSchedChips');
+  if(!chipContainer){
+    chipContainer=document.createElement('div');
+    chipContainer.id='wheelSchedChips';
+    chipContainer.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:0 0 14px;justify-content:center';
+    wheelCanvas.parentElement.parentElement.insertBefore(chipContainer,wheelCanvas.parentElement);
+  }
+  chipContainer.innerHTML='';
+
+  const gradeScheds=(state.schedules||[]).filter(s=>s.grade===activeGrade);
+
+  // "All students" chip
+  const allChip=document.createElement('button');
+  allChip.className='schedule-chip'+(activeWheelScheduleId===null?' active':'');
+  allChip.style.background=activeWheelScheduleId===null?'var(--green-deep)':'var(--slate)';
+  allChip.textContent='Tất cả';
+  allChip.addEventListener('click',()=>{ activeWheelScheduleId=null; wheelCustomList=null; currentRotation=0; renderWheel(); });
+  chipContainer.appendChild(document.createElement('span').appendChild(allChip)||allChip);
+
+  gradeScheds.forEach((s,i)=>{
+    const color=SCHED_COLORS[(state.schedules||[]).indexOf(s)%SCHED_COLORS.length];
+    const chip=document.createElement('button');
+    chip.className='schedule-chip';
+    chip.style.background=activeWheelScheduleId===s.id?color:color+'99';
+    chip.textContent=s.name;
+    chip.addEventListener('click',()=>{
+      activeWheelScheduleId=s.id; wheelCustomList=null; currentRotation=0; renderWheel();
+    });
+    chipContainer.appendChild(chip);
+  });
+
+  // pencil button
+  const editBtn=document.createElement('button');
+  editBtn.className='btn-icon small';
+  editBtn.style.cssText='background:var(--chalk-dim);color:var(--green-deep);margin-left:4px';
+  editBtn.textContent='✏️';
+  editBtn.addEventListener('click',()=>openWheelEditModal());
+  chipContainer.appendChild(editBtn);
+
+  currentRotation=0;
+  wheelResult.textContent='';
+  drawWheel();
 }
-function renderWheel(){ currentRotation=0; wheelResult.textContent=''; drawWheel(); }
+
+function getWheelStudents(){
+  if(wheelCustomList) return wheelCustomList;
+  const removed=state.wheelRemoved?.[activeWheelScheduleId||('grade_'+activeGrade)]||[];
+  let students;
+  if(activeWheelScheduleId){
+    const sc=(state.schedules||[]).find(x=>x.id===activeWheelScheduleId);
+    students=(sc?.studentIds||[]).map(id=>(state.students||[]).find(x=>x.id===id)).filter(Boolean);
+  }else{
+    students=studentsInGrade(activeGrade);
+  }
+  return students.filter(s=>!removed.includes(s.id));
+}
+
 function drawWheel(){
   const students=getWheelStudents();
   const size=wheelCanvas.width;
@@ -1233,7 +1342,7 @@ function drawWheel(){
   const slice=(2*Math.PI)/students.length;
   ctx.save(); ctx.translate(cx,cy); ctx.rotate(currentRotation);
   students.forEach((s,i)=>{
-    const start=i*slice, end=start+slice;
+    const start=i*slice,end=start+slice;
     ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r,start,end); ctx.closePath();
     ctx.fillStyle=WHEEL_COLORS[i%WHEEL_COLORS.length]; ctx.fill();
     ctx.save(); ctx.rotate(start+slice/2); ctx.textAlign='right';
@@ -1244,6 +1353,7 @@ function drawWheel(){
   });
   ctx.restore();
 }
+
 spinBtn.addEventListener('click',()=>{
   if(spinning) return;
   const students=getWheelStudents();
@@ -1251,21 +1361,23 @@ spinBtn.addEventListener('click',()=>{
   spinning=true; wheelResult.textContent='';
   const slice=(2*Math.PI)/students.length;
   const winnerIndex=Math.floor(Math.random()*students.length);
-  const targetSliceMiddle=winnerIndex*slice+slice/2;
-  const extraSpins=5+Math.random()*2;
-  const finalRotation=currentRotation+(extraSpins*2*Math.PI)+(-Math.PI/2-targetSliceMiddle-currentRotation%(2*Math.PI));
-  const duration=4200, startRotation=currentRotation, delta=finalRotation-startRotation, startTime=performance.now();
+  const target=winnerIndex*slice+slice/2;
+  const extra=5+Math.random()*2;
+  const final=currentRotation+(extra*2*Math.PI)+(-Math.PI/2-target-currentRotation%(2*Math.PI));
+  const duration=4200,startRot=currentRotation,delta=final-startRot,startTime=performance.now();
   function animate(now){
-    const elapsed=now-startTime, t=Math.min(elapsed/duration,1), eased=1-Math.pow(1-t,4);
-    currentRotation=startRotation+delta*eased; drawWheel();
+    const elapsed=now-startTime,t=Math.min(elapsed/duration,1),eased=1-Math.pow(1-t,4);
+    currentRotation=startRot+delta*eased; drawWheel();
     if(t<1){ requestAnimationFrame(animate); }
     else{
       spinning=false;
       const winner=students[winnerIndex];
       wheelResult.textContent=winner.studentName;
       if(removeOnPick.checked){
-        if(!state.wheelRemoved[activeGrade]) state.wheelRemoved[activeGrade]=[];
-        state.wheelRemoved[activeGrade].push(winner.id);
+        const key=activeWheelScheduleId||('grade_'+activeGrade);
+        if(!state.wheelRemoved) state.wheelRemoved={};
+        if(!state.wheelRemoved[key]) state.wheelRemoved[key]=[];
+        state.wheelRemoved[key].push(winner.id);
         saveData(); setTimeout(drawWheel,600);
       }
       if(navigator.vibrate) navigator.vibrate(40);
@@ -1273,18 +1385,90 @@ spinBtn.addEventListener('click',()=>{
   }
   requestAnimationFrame(animate);
 });
+
 document.getElementById('resetWheelBtn').addEventListener('click',()=>{
-  state.wheelRemoved[activeGrade]=[];
+  const key=activeWheelScheduleId||('grade_'+activeGrade);
+  if(!state.wheelRemoved) state.wheelRemoved={};
+  state.wheelRemoved[key]=[];
+  wheelCustomList=null;
   saveData(); wheelResult.textContent=''; drawWheel();
 });
 
+/* Wheel edit modal — manually add/remove names */
+function openWheelEditModal(){
+  closeAllModals();
+  const students=getWheelStudents();
+  // build a simple modal on the fly
+  let modal=document.getElementById('wheelEditModal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='wheelEditModal';
+    modal.className='modal-backdrop';
+    modal.innerHTML=`<div class="modal">
+      <div class="modal-header">
+        <h2>Edit Wheel List</h2>
+        <button class="modal-close" id="closeWheelEditBtn">✕</button>
+      </div>
+      <p style="font-size:14px;color:var(--slate);margin:0 0 10px">One name per line. Edit freely — changes only affect this wheel session.</p>
+      <textarea id="wheelEditArea" style="width:100%;min-height:200px;padding:11px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;font-family:inherit;resize:vertical"></textarea>
+      <div class="modal-actions" style="margin-top:12px">
+        <div class="modal-actions-right">
+          <button class="btn-text" id="cancelWheelEditBtn">Cancel</button>
+          <button class="btn-solid" id="saveWheelEditBtn">Apply</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click',e=>{ if(e.target===modal) modal.hidden=true; });
+    document.getElementById('closeWheelEditBtn').addEventListener('click',()=>modal.hidden=true);
+    document.getElementById('cancelWheelEditBtn').addEventListener('click',()=>modal.hidden=true);
+    document.getElementById('saveWheelEditBtn').addEventListener('click',()=>{
+      const lines=document.getElementById('wheelEditArea').value.split('\n').map(l=>l.trim()).filter(Boolean);
+      wheelCustomList=lines.map(name=>{
+        const existing=(state.students||[]).find(s=>s.studentName===name);
+        return existing||{id:'custom_'+uid(),studentName:name,parentName:'',grade:activeGrade};
+      });
+      modal.hidden=true; currentRotation=0; drawWheel();
+    });
+  }
+  document.getElementById('wheelEditArea').value=students.map(s=>s.studentName).join('\n');
+  modal.hidden=false;
+}
+
 /* ============================================================
-   INIT
+   FIREBASE INIT — load data then start app
    ============================================================ */
-showScreen('grades',{showBack:false});
+showLoading(true);
+onValue(DATA_REF,(snapshot)=>{
+  const data=snapshot.val();
+  if(data){
+    state.students=data.students||[];
+    state.schedules=data.schedules||[];
+    state.attendance=data.attendance||{};
+    state.wheelRemoved=data.wheelRemoved||{};
+    state.feePayments=data.feePayments||{};
+    state.teachers=data.teachers||[];
+    // ensure arrays
+    if(!Array.isArray(state.students)) state.students=Object.values(state.students||{});
+    if(!Array.isArray(state.schedules)) state.schedules=Object.values(state.schedules||{});
+    if(!Array.isArray(state.teachers)) state.teachers=Object.values(state.teachers||{});
+  }
+  if(!appReady){
+    appReady=true;
+    showLoading(false);
+    showScreen('grades',{showBack:false});
+  }else{
+    // live update: re-render current screen
+    showScreen(currentScreen,{title:topbarTitle.textContent,showBack:!backBtn.hidden});
+  }
+},(error)=>{
+  console.error('Firebase error:',error);
+  showLoading(false);
+  showScreen('grades',{showBack:false});
+});
 
 if('serviceWorker' in navigator){
   window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('sw.js').catch(err=>console.log('SW failed:',err));
+    navigator.serviceWorker.register('sw.js').catch(e=>console.log('SW failed:',e));
   });
 }
