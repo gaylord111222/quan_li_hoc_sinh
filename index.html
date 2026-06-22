@@ -63,8 +63,14 @@
 
   <!-- SCHEDULE TAB: ALL SCHEDULES OVERVIEW -->
   <section class="screen" id="screen-schedule" hidden>
+    <div class="toolbar">
+      <select id="scheduleGradeFilter">
+        <option value="">All grades</option>
+      </select>
+      <button class="btn-icon" id="addScheduleGlobalBtn" aria-label="Add schedule">+</button>
+    </div>
     <ul class="schedule-list" id="scheduleList"></ul>
-    <p class="empty-state" id="scheduleEmpty">No schedules yet. Open a grade and tap + next to "Lịch học" to add one.</p>
+    <p class="empty-state" id="scheduleEmpty">No schedules yet. Tap + to add one.</p>
   </section>
 
   <!-- SCHEDULE DETAIL -->
@@ -118,13 +124,13 @@
 
 <nav class="tabbar">
   <button class="tab active" data-screen="grades">
-    <span class="tab-icon">☰</span><span>Roster</span>
+    <span class="tab-icon">☰</span><span>Lớp học</span>
   </button>
   <button class="tab" data-screen="attendance-grades">
     <span class="tab-icon">✓</span><span>Attendance</span>
   </button>
   <button class="tab" data-screen="schedule">
-    <span class="tab-icon">▦</span><span>Schedule</span>
+    <span class="tab-icon">▦</span><span>lịch dạy</span>
   </button>
   <button class="tab" data-screen="wheel-grades">
     <span class="tab-icon">◎</span><span>Wheel</span>
