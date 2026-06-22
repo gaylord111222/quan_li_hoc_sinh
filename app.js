@@ -6,6 +6,14 @@ const STORAGE_KEY = 'classroomCompanion.v2';
 const GRADES = [1,2,3,4,5,6,7,8,9];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
+const SCHED_COLORS = [
+  '#2F4538','#E8B84B','#C45B4D','#4A7FB5',
+  '#7B5EA7','#3A9E7E','#D4813A','#5C8A3C','#B5507A'
+];
+function schedColorIdx(scheduleId){
+  const idx = state.schedules.findIndex(s=>s.id===scheduleId);
+  return idx >= 0 ? idx % SCHED_COLORS.length : 0;
+}
 function defaultData(){
   return {
     students: [
@@ -162,14 +170,17 @@ function renderGradeScheduleRow(){
   row.innerHTML='';
   const scheds = state.schedules.filter(s=>s.grade===activeGrade);
   if(scheds.length===0){
-    row.innerHTML='<li style="font-size:13px;color:var(--slate);padding:4px 0">No schedules yet</li>';
+    row.innerHTML='<li style="font-size:13px;color:var(--slate);padding:4px 0">No schedules yet — tap + to add</li>';
     return;
   }
-  scheds.forEach(s=>{
+  scheds.forEach((s,i)=>{
+    const color = SCHED_COLORS[i % SCHED_COLORS.length];
+    const count = (s.studentIds||[]).length;
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.className='schedule-chip';
-    btn.textContent=s.name;
+    btn.style.background = color;
+    btn.innerHTML=`${escapeHtml(s.name)} <span class="chip-count">${count}</span>`;
     btn.addEventListener('click',()=>{
       activeScheduleId=s.id;
       navigateTo('schedule-detail',{title:s.name,showBack:true});
@@ -196,6 +207,11 @@ function renderRoster(){
   studentList.innerHTML='';
   rosterEmpty.hidden = studentsInGrade(activeGrade).length>0;
   list.forEach(s=>{
+    const enrolledScheds = state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
+    const strips = enrolledScheds.map(sc=>{
+      const idx = state.schedules.findIndex(x=>x.id===sc.id) % SCHED_COLORS.length;
+      return `<div class="color-strip" style="background:${SCHED_COLORS[idx]}"></div>`;
+    }).join('');
     const li = document.createElement('li');
     li.className='student-card';
     li.innerHTML=`
@@ -203,7 +219,8 @@ function renderRoster(){
       <div class="student-info">
         <div class="student-name">${escapeHtml(s.studentName)}</div>
         <div class="student-meta">${escapeHtml(s.parentName?'PH: '+s.parentName:'Chưa có tên phụ huynh')}</div>
-      </div>`;
+      </div>
+      <div class="student-color-strips">${strips}</div>`;
     li.addEventListener('click',()=>openStudentModal(s.id));
     studentList.appendChild(li);
   });
@@ -435,7 +452,8 @@ document.getElementById('saveScheduleBtn').addEventListener('click',()=>{
 function renderScheduleDetail(){
   const s=state.schedules.find(x=>x.id===activeScheduleId);
   if(!s) return;
-  document.getElementById('detailTeacher').textContent=s.teacherName||'—';
+  document.getElementById('detailTeacher').textContent=(s.teacherName||'—') + '  ✏️';
+document.getElementById('detailTeacher').style.cursor='pointer';
   document.getElementById('detailFeeBtn').textContent=s.baseFee?formatFee(s.baseFee):'Tap to set';
   // time blocks
   const tbList=document.getElementById('detailTimeBlocks');
@@ -483,6 +501,9 @@ function renderScheduleDetail(){
   });
 }
 
+document.getElementById('detailTeacher').addEventListener('click',()=>{
+  openScheduleModal(activeScheduleId);
+});
 document.getElementById('detailFeeBtn').addEventListener('click',()=>openFeeModal('schedule'));
 document.getElementById('addTimeBlockBtn').addEventListener('click',()=>openTimeBlockModal());
 document.getElementById('addStudentToScheduleBtn').addEventListener('click',()=>openAddToScheduleModal());
@@ -499,19 +520,48 @@ document.getElementById('deleteScheduleDetailBtn').addEventListener('click',()=>
 /* ============================================================
    SCHEDULE OVERVIEW (Schedule tab)
    ============================================================ */
+function populateScheduleGradeFilter(){
+  const sel = document.getElementById('scheduleGradeFilter');
+  const cur = sel.value;
+  sel.innerHTML='<option value="">All grades</option>';
+  GRADES.forEach(g=>{
+    const opt=document.createElement('option');
+    opt.value=g; opt.textContent=`Grade ${g}`;
+    sel.appendChild(opt);
+  });
+  sel.value=cur;
+}
 function renderScheduleOverview(){
+  populateScheduleGradeFilter();
+  const filterGrade = document.getElementById('scheduleGradeFilter').value;
   const list=document.getElementById('scheduleList');
   const empty=document.getElementById('scheduleEmpty');
   list.innerHTML='';
-  empty.hidden=state.schedules.length>0;
-  state.schedules.forEach(s=>{
+  const filtered = filterGrade
+    ? state.schedules.filter(s=>s.grade===parseInt(filterGrade))
+    : state.schedules;
+  empty.hidden=filtered.length>0;
+  filtered.forEach((s,i)=>{
+    const color = SCHED_COLORS[state.schedules.indexOf(s) % SCHED_COLORS.length];
     const div=document.createElement('div');
     div.className='schedule-card-full';
-    const times=(s.timeBlocks||[]).map(tb=>`${DAY_NAMES[tb.day]} ${formatTime(tb.start)}`).join(', ')||'No times set';
+    div.style.borderLeftColor=color;
+    const times=(s.timeBlocks||[]).map(tb=>`${DAY_NAMES[tb.day]} ${formatTime(tb.start)}–${formatTime(tb.end)}`).join(' · ')||'No times set';
     div.innerHTML=`
-      <div class="sc-name">${escapeHtml(s.name)} <span style="font-size:12px;color:var(--slate)">· Grade ${s.grade}</span></div>
-      <div class="sc-meta">${escapeHtml(s.teacherName||'No teacher')} · ${times}</div>
-      <div class="sc-meta">${(s.studentIds||[]).length} students · ${s.baseFee?formatFee(s.baseFee):'No fee set'}</div>`;
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="sc-name">${escapeHtml(s.name)} <span style="font-size:12px;color:var(--slate)">· Grade ${s.grade}</span></div>
+          <div class="sc-meta">${escapeHtml(s.teacherName||'No teacher')} · ${(s.studentIds||[]).length} students</div>
+          <div class="sc-meta">${times}</div>
+          <div class="sc-meta">${s.baseFee?formatFee(s.baseFee):'No fee set'}</div>
+        </div>
+        <button class="chip" style="font-size:12px;padding:5px 12px;flex-shrink:0;margin-left:10px" data-edit-id="${s.id}">Edit</button>
+      </div>`;
+    div.querySelector('[data-edit-id]').addEventListener('click',e=>{
+      e.stopPropagation();
+      activeGrade=s.grade;
+      openScheduleModal(s.id);
+    });
     div.addEventListener('click',()=>{
       activeScheduleId=s.id;
       activeGrade=s.grade;
@@ -520,6 +570,12 @@ function renderScheduleOverview(){
     list.appendChild(div);
   });
 }
+document.getElementById('scheduleGradeFilter').addEventListener('change',renderScheduleOverview);
+document.getElementById('addScheduleGlobalBtn').addEventListener('click',()=>{
+  const filterGrade = document.getElementById('scheduleGradeFilter').value;
+  activeGrade = filterGrade ? parseInt(filterGrade) : 1;
+  openScheduleModal();
+});
 
 /* ============================================================
    TIME BLOCK MODAL
@@ -532,6 +588,17 @@ function openTimeBlockModal(){
   document.getElementById('timeBlockEnd').value='';
   timeBlockModal.hidden=false;
 }
+function autoFillEndTime(){
+  const startVal = document.getElementById('timeBlockStart').value;
+  if(!startVal) return;
+  const [h,m] = startVal.split(':').map(Number);
+  const totalMins = h*60 + m + 90; // +1.5 hours = +90 mins
+  const endH = Math.floor(totalMins/60) % 24;
+  const endM = totalMins % 60;
+  document.getElementById('timeBlockEnd').value =
+    `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+}
+document.getElementById('timeBlockStart').addEventListener('change', autoFillEndTime);
 function closeTimeBlockModal(){ timeBlockModal.hidden=true; }
 timeBlockModal.addEventListener('click',e=>{ if(e.target===timeBlockModal) closeTimeBlockModal(); });
 document.getElementById('cancelTimeBlockBtn').addEventListener('click',closeTimeBlockModal);
