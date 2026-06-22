@@ -28,6 +28,13 @@
 
   <!-- STUDENTS WITHIN A GRADE -->
   <section class="screen" id="screen-roster" hidden>
+    <div class="schedule-row-wrap">
+      <div class="schedule-row-head">
+        <span>Lịch học · Schedules</span>
+        <button class="btn-icon small" id="addScheduleForGradeBtn" aria-label="Add schedule">+</button>
+      </div>
+      <ul class="schedule-chip-row" id="gradeScheduleRow"></ul>
+    </div>
     <div class="toolbar">
       <input type="text" id="rosterSearch" placeholder="Search students…" autocomplete="off">
       <button class="btn-icon" id="addStudentBtn" aria-label="Add student">+</button>
@@ -54,22 +61,36 @@
     <p class="empty-state" id="attendanceEmpty">No students in this grade yet.</p>
   </section>
 
-  <!-- SCHEDULE SCREEN -->
+  <!-- SCHEDULE TAB: ALL SCHEDULES OVERVIEW -->
   <section class="screen" id="screen-schedule" hidden>
-    <div class="toolbar">
-      <select id="scheduleDay">
-        <option value="0">Sunday</option>
-        <option value="1">Monday</option>
-        <option value="2">Tuesday</option>
-        <option value="3">Wednesday</option>
-        <option value="4">Thursday</option>
-        <option value="5">Friday</option>
-        <option value="6">Saturday</option>
-      </select>
-      <button class="btn-icon" id="addScheduleBtn" aria-label="Add class">+</button>
-    </div>
     <ul class="schedule-list" id="scheduleList"></ul>
-    <p class="empty-state" id="scheduleEmpty">No classes scheduled for this day.</p>
+    <p class="empty-state" id="scheduleEmpty">No schedules yet. Open a grade and tap + next to "Lịch học" to add one.</p>
+  </section>
+
+  <!-- SCHEDULE DETAIL -->
+  <section class="screen" id="screen-schedule-detail" hidden>
+    <div class="sched-detail-card">
+      <div class="sched-row">
+        <span class="sched-label">Tên giáo viên</span>
+        <span class="sched-value" id="detailTeacher">—</span>
+      </div>
+      <div class="sched-row">
+        <span class="sched-label">Học phí</span>
+        <button class="sched-fee-btn" id="detailFeeBtn">—</button>
+      </div>
+      <div class="sched-row sched-row-top">
+        <span class="sched-label">Thời gian</span>
+        <ul class="time-block-list" id="detailTimeBlocks"></ul>
+      </div>
+      <button class="chip" id="addTimeBlockBtn">+ Add time block</button>
+    </div>
+    <div class="sched-students-head">
+      <span>Danh sách học sinh</span>
+      <button class="btn-icon small" id="addStudentToScheduleBtn">+</button>
+    </div>
+    <ul class="student-list" id="detailStudentList"></ul>
+    <p class="empty-state" id="detailStudentEmpty">No students enrolled yet.</p>
+    <button class="btn-text danger" id="deleteScheduleDetailBtn">Delete this schedule</button>
   </section>
 
   <!-- WHEEL: GRADE PICKER -->
@@ -117,6 +138,9 @@
       <h2 id="studentModalTitle">Add Student</h2>
       <button class="modal-close" id="closeStudentModalBtn" aria-label="Close">✕</button>
     </div>
+    <label>Lớp <span class="opt">(grade)</span>
+      <select id="studentGrade"></select>
+    </label>
     <label>Tên học sinh <span class="req">(student name)</span>
       <input type="text" id="studentName" placeholder="e.g. Nguyễn Văn A">
     </label>
@@ -132,6 +156,9 @@
     <label>Ghi chú <span class="opt">(notes)</span>
       <textarea id="studentNotes" placeholder="Dị ứng, chỗ ngồi, lưu ý…"></textarea>
     </label>
+    <label>Lịch học <span class="opt">(schedules)</span>
+      <ul class="schedule-checklist" id="studentScheduleChecklist"></ul>
+    </label>
     <div class="modal-actions">
       <button class="btn-text danger" id="deleteStudentBtn" hidden>Delete</button>
       <div class="modal-actions-right">
@@ -142,30 +169,97 @@
   </div>
 </div>
 
-<!-- ADD SCHEDULE MODAL -->
+<!-- ADD/EDIT SCHEDULE MODAL -->
 <div class="modal-backdrop" id="scheduleModal" hidden>
   <div class="modal">
     <div class="modal-header">
-      <h2>Add Class</h2>
+      <h2 id="scheduleModalTitle">Add Schedule</h2>
       <button class="modal-close" id="closeScheduleModalBtn" aria-label="Close">✕</button>
     </div>
-    <label>Class / Subject name
-      <input type="text" id="scheduleSubject" placeholder="e.g. Grade 7, Math">
+    <label>Tên lớp <span class="req">(class name)</span>
+      <input type="text" id="scheduleSubject" placeholder="e.g. Toán Nâng Cao">
     </label>
-    <label>Start time
-      <input type="time" id="scheduleStart">
+    <label>Tên giáo viên <span class="opt">(teacher name)</span>
+      <input type="text" id="scheduleTeacher" placeholder="e.g. Nguyễn Thị B">
     </label>
-    <label>End time
-      <input type="time" id="scheduleEnd">
-    </label>
-    <label>Room (optional)
-      <input type="text" id="scheduleRoom" placeholder="e.g. Room 204">
+    <label>Học phí / tháng <span class="opt">(monthly fee)</span>
+      <input type="text" id="scheduleBaseFee" placeholder="e.g. 500000">
     </label>
     <div class="modal-actions">
-      <button class="btn-text danger" id="deleteScheduleBtn" hidden>Delete</button>
       <div class="modal-actions-right">
         <button class="btn-text" id="cancelScheduleBtn">Cancel</button>
         <button class="btn-solid" id="saveScheduleBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD TIME BLOCK MODAL -->
+<div class="modal-backdrop" id="timeBlockModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Time Block</h2>
+      <button class="modal-close" id="closeTimeBlockModalBtn" aria-label="Close">✕</button>
+    </div>
+    <label>Day
+      <select id="timeBlockDay">
+        <option value="0">Sunday</option>
+        <option value="1">Monday</option>
+        <option value="2">Tuesday</option>
+        <option value="3">Wednesday</option>
+        <option value="4">Thursday</option>
+        <option value="5">Friday</option>
+        <option value="6">Saturday</option>
+      </select>
+    </label>
+    <label>Start time
+      <input type="time" id="timeBlockStart">
+    </label>
+    <label>End time
+      <input type="time" id="timeBlockEnd">
+    </label>
+    <div class="modal-actions">
+      <div class="modal-actions-right">
+        <button class="btn-text" id="cancelTimeBlockBtn">Cancel</button>
+        <button class="btn-solid" id="saveTimeBlockBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT FEE MODAL -->
+<div class="modal-backdrop" id="feeModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="feeModalTitle">Edit Fee</h2>
+      <button class="modal-close" id="closeFeeModalBtn" aria-label="Close">✕</button>
+    </div>
+    <label id="feeModalBaseLabel">Học phí / tháng
+      <input type="text" id="feeModalInput" placeholder="e.g. 500000">
+    </label>
+    <p class="fee-note" id="feeModalNote"></p>
+    <div class="modal-actions">
+      <div class="modal-actions-right">
+        <button class="btn-text" id="cancelFeeBtn">Cancel</button>
+        <button class="btn-solid" id="saveFeeBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD STUDENT TO SCHEDULE MODAL -->
+<div class="modal-backdrop" id="addToScheduleModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Student to Schedule</h2>
+      <button class="modal-close" id="closeAddToScheduleModalBtn" aria-label="Close">✕</button>
+    </div>
+    <input type="text" id="addToScheduleSearch" placeholder="Search students…" style="width:100%;padding:11px 13px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;margin-bottom:12px;">
+    <ul class="schedule-checklist" id="addToScheduleList"></ul>
+    <div class="modal-actions">
+      <div class="modal-actions-right">
+        <button class="btn-text" id="cancelAddToScheduleBtn">Cancel</button>
+        <button class="btn-solid" id="saveAddToScheduleBtn">Done</button>
       </div>
     </div>
   </div>
