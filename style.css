@@ -23,7 +23,7 @@ html,body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   -webkit-tap-highlight-color:transparent;
   overscroll-behavior:none;
-  font-size:17px;
+  font-size:19px;
 }
 
 body{
@@ -679,7 +679,7 @@ body{
   align-items:center;
 }
 .color-strip{
-  width:6px;
+  width:18px;
   height:36px;
   border-radius:3px;
 }
@@ -730,7 +730,7 @@ body{
 .hocphi-box.all{border-color:var(--pencil);}
 .hocphi-box.warning{border-color:var(--absent);}
 .hocphi-box-label{
-  font-size:17px;
+  font-size:19px;
   font-weight:700;
   color:var(--green-deep);
 }
@@ -843,6 +843,134 @@ body{
   justify-content:center;
   font-weight:800;
   font-size:16px;
+  flex-shrink:0;
+}
+/* ── Weekly calendar timetable ── */
+.calendar-toggle-row{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-bottom:12px;
+}
+.calendar-toggle-btn{
+  background:#fff;
+  border:1.5px solid var(--chalk-dim);
+  border-radius:var(--radius);
+  padding:9px 16px;
+  font-size:15px;
+  font-weight:700;
+  color:var(--green-deep);
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.calendar-toggle-btn.active{
+  background:var(--green-deep);
+  color:var(--chalk);
+  border-color:var(--green-deep);
+}
+.calendar-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  border-radius:var(--radius);
+  border:1.5px solid var(--chalk-dim);
+  background:#fff;
+}
+.calendar-table{
+  border-collapse:collapse;
+  min-width:700px;
+  width:100%;
+  font-size:13px;
+}
+.calendar-table th{
+  background:var(--green-deep);
+  color:var(--chalk);
+  padding:10px 4px;
+  text-align:center;
+  font-size:13px;
+  font-weight:700;
+  position:sticky;
+  top:0;
+  z-index:2;
+}
+.calendar-table th.time-col{
+  width:52px;
+  min-width:52px;
+}
+.calendar-table td{
+  border:1px solid var(--chalk-dim);
+  vertical-align:top;
+  padding:0;
+  height:54px;
+  position:relative;
+  min-width:80px;
+}
+.calendar-table td.time-label{
+  background:var(--chalk);
+  font-size:12px;
+  font-weight:700;
+  color:var(--slate);
+  text-align:right;
+  padding:4px 6px;
+  vertical-align:top;
+  white-space:nowrap;
+}
+.cal-block{
+  position:absolute;
+  left:2px;
+  right:2px;
+  border-radius:6px;
+  padding:3px 5px;
+  font-size:11px;
+  font-weight:700;
+  color:#fff;
+  cursor:grab;
+  overflow:hidden;
+  z-index:1;
+  box-shadow:0 1px 4px rgba(0,0,0,.18);
+  user-select:none;
+  line-height:1.3;
+}
+.cal-block:active{cursor:grabbing;opacity:0.85;}
+.cal-block .cal-block-name{
+  display:block;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.cal-block .cal-block-time{
+  font-size:10px;
+  opacity:0.85;
+}
+.cal-drop-target{
+  background:rgba(232,184,75,0.18);
+}
+/* Schedule chip row in học phí detail */
+.hp-schedule-chip-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:14px;
+}
+.hp-sched-chip{
+  border-radius:999px;
+  padding:7px 16px;
+  font-size:14px;
+  font-weight:700;
+  color:#fff;
+  border:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.hp-sched-chip.dim{opacity:0.45;}
+.hp-total{
+  font-size:14px;
+  font-weight:800;
+  color:var(--green-deep);
+  white-space:nowrap;
   flex-shrink:0;
 }
 .teacher-info{flex:1;}
