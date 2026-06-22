@@ -69,8 +69,19 @@
       </select>
       <button class="btn-icon" id="addScheduleGlobalBtn" aria-label="Add schedule">+</button>
     </div>
-    <ul class="schedule-list" id="scheduleList"></ul>
-    <p class="empty-state" id="scheduleEmpty">No schedules yet. Tap + to add one.</p>
+    <div class="calendar-toggle-row">
+      <button class="calendar-toggle-btn active" id="viewListBtn">☰ List</button>
+      <button class="calendar-toggle-btn" id="viewCalBtn">📅 Calendar</button>
+    </div>
+    <div id="scheduleListView">
+      <ul class="schedule-list" id="scheduleList"></ul>
+      <p class="empty-state" id="scheduleEmpty">No schedules yet. Tap + to add one.</p>
+    </div>
+    <div id="scheduleCalView" hidden>
+      <div class="calendar-wrap">
+        <table class="calendar-table" id="calendarTable"></table>
+      </div>
+    </div>
   </section>
 
   <!-- SCHEDULE DETAIL -->
@@ -90,6 +101,11 @@
       </div>
       <button class="chip" id="addTimeBlockBtn">+ Add time block</button>
     </div>
+    <label style="display:block;margin:14px 0 4px;font-size:14px;font-weight:700;color:var(--slate)">
+      Ghi chú lịch học (progress notes)
+    </label>
+    <textarea id="scheduleNotes" style="width:100%;padding:11px 13px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;font-family:inherit;min-height:80px;resize:vertical;background:#fff;color:var(--green-deep)" placeholder="Ghi chú tiến độ học, nội dung bài…"></textarea>
+    <button class="btn-solid" id="saveScheduleNotesBtn" style="margin-top:8px">Lưu ghi chú</button>
     <div class="sched-students-head">
       <span>Danh sách học sinh</span>
       <button class="btn-icon small" id="addStudentToScheduleBtn">+</button>
@@ -127,7 +143,8 @@
   <!-- HỌC PHÍ DETAIL SCREEN -->
   <section class="screen" id="screen-hoc-phi-detail" hidden>
     <h2 class="hocphi-detail-title" id="hocPhiDetailTitle"></h2>
-    <ul class="student-list" id="hocPhiStudentList"></ul>
+    <div class="hp-schedule-chip-row" id="hpScheduleChipRow"></div>
+    <div id="hocPhiStudentList"></div>
     <p class="empty-state" id="hocPhiEmpty">Không có học sinh nào.</p>
   </section>
 
@@ -333,6 +350,9 @@
     </label>
     <label>Số điện thoại <span class="opt"></span>
       <input type="tel" id="teacherPhone" placeholder="e.g. 0901 234 567">
+    </label>
+    <label>Lịch dạy <span class="opt">(assigned schedules)</span>
+      <ul class="schedule-checklist" id="teacherScheduleChecklist"></ul>
     </label>
     <div class="modal-actions">
       <button class="btn-text danger" id="deleteTeacherBtn" hidden>Delete</button>
