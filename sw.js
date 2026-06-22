@@ -1,5 +1,5 @@
 /* Service worker: caches the app shell so it loads with zero internet. */
-const CACHE_NAME = 'classroom-companion-v2';
+const CACHE_NAME = 'classroom-companion-v5';
 const FILES_TO_CACHE = [
   './',
   './index.html',
