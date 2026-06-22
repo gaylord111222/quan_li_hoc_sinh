@@ -99,6 +99,47 @@
     <button class="btn-text danger" id="deleteScheduleDetailBtn">Delete this schedule</button>
   </section>
 
+  <!-- HỌC PHÍ SCREEN -->
+  <section class="screen" id="screen-hoc-phi" hidden>
+    <div class="month-row" id="monthRow"></div>
+    <div class="hocphi-boxes">
+      <div class="hocphi-box" id="hpBoxChuaDong">
+        <span class="hocphi-box-label">Chưa đóng học phí</span>
+        <span class="hocphi-box-count" id="hpCountChuaDong">0</span>
+      </div>
+      <div class="hocphi-box paid" id="hpBoxDaDong">
+        <span class="hocphi-box-label">Đã đóng</span>
+        <span class="hocphi-box-count" id="hpCountDaDong">0</span>
+      </div>
+      <div class="hocphi-box all" id="hpBoxTatCa">
+        <span class="hocphi-box-label">Tất cả</span>
+        <span class="hocphi-box-count" id="hpCountTatCa">0</span>
+      </div>
+    </div>
+    <div class="hocphi-no-schedule">
+      <div class="hocphi-box warning" id="hpBoxChuaCoLich">
+        <span class="hocphi-box-label">Học sinh chưa có lịch học</span>
+        <span class="hocphi-box-count" id="hpCountChuaCoLich">0</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- HỌC PHÍ DETAIL SCREEN -->
+  <section class="screen" id="screen-hoc-phi-detail" hidden>
+    <h2 class="hocphi-detail-title" id="hocPhiDetailTitle"></h2>
+    <ul class="student-list" id="hocPhiStudentList"></ul>
+    <p class="empty-state" id="hocPhiEmpty">Không có học sinh nào.</p>
+  </section>
+
+  <!-- GIÁO VIÊN SCREEN -->
+  <section class="screen" id="screen-giao-vien" hidden>
+    <div class="toolbar">
+      <span style="flex:1;font-size:17px;font-weight:700;color:var(--green-deep)">Giáo viên</span>
+      <button class="btn-icon" id="addTeacherBtn">+</button>
+    </div>
+    <ul class="student-list" id="teacherList"></ul>
+    <p class="empty-state" id="teacherEmpty">Chưa có giáo viên. Tap + để thêm.</p>
+  </section>
   <!-- WHEEL: GRADE PICKER -->
   <section class="screen" id="screen-wheel-grades" hidden>
     <ul class="grade-list" id="wheelGradeList"></ul>
@@ -135,6 +176,12 @@
   <button class="tab" data-screen="wheel-grades">
     <span class="tab-icon">◎</span><span>Wheel</span>
   </button>
+  <button class="tab" data-screen="hoc-phi">
+    <span class="tab-icon">₫</span><span>Học phí</span>
+  </button>
+  <button class="tab" data-screen="giao-vien">
+    <span class="tab-icon">👤</span><span>Giáo viên</span>
+  </button>
 </nav>
 
 <!-- ADD/EDIT STUDENT MODAL -->
@@ -158,6 +205,9 @@
     </label>
     <label>SĐT phụ huynh <span class="opt">(parent phone)</span>
       <input type="tel" id="parentPhone" placeholder="e.g. 0901 234 567">
+    </label>
+    <label>Ngày nhập học <span class="opt">(enrollment date)</span>
+      <input type="date" id="studentEnrollDate">
     </label>
     <label>Ghi chú <span class="opt">(notes)</span>
       <textarea id="studentNotes" placeholder="Dị ứng, chỗ ngồi, lưu ý…"></textarea>
@@ -271,6 +321,40 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<!-- ADD/EDIT TEACHER MODAL -->
+<div class="modal-backdrop" id="teacherModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="teacherModalTitle">Add Teacher</h2>
+      <button class="modal-close" id="closeTeacherModalBtn" aria-label="Close">✕</button>
+    </div>
+    <label>Tên giáo viên <span class="req"></span>
+      <input type="text" id="teacherName" placeholder="e.g. Nguyễn Thị B">
+    </label>
+    <label>Số điện thoại <span class="opt"></span>
+      <input type="tel" id="teacherPhone" placeholder="e.g. 0901 234 567">
+    </label>
+    <div class="modal-actions">
+      <button class="btn-text danger" id="deleteTeacherBtn" hidden>Delete</button>
+      <div class="modal-actions-right">
+        <button class="btn-text" id="cancelTeacherBtn">Cancel</button>
+        <button class="btn-solid" id="saveTeacherBtn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HỌC PHÍ STUDENT DETAIL MODAL -->
+<div class="modal-backdrop" id="hocPhiStudentModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="hocPhiStudentName"></h2>
+      <button class="modal-close" id="closeHocPhiStudentModalBtn" aria-label="Close">✕</button>
+    </div>
+    <p class="fee-note" id="hocPhiStudentEnroll"></p>
+    <ul class="hocphi-schedule-list" id="hocPhiScheduleList"></ul>
+  </div>
+</div>
+  <script src="app.js"></script>
 </body>
 </html>
