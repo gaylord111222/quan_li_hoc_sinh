@@ -83,11 +83,16 @@ const allScreens = {
   'schedule-detail': document.getElementById('screen-schedule-detail'),
   'wheel-grades': document.getElementById('screen-wheel-grades'),
   'wheel': document.getElementById('screen-wheel'),
+  'hoc-phi': document.getElementById('screen-hoc-phi'),
+  'hoc-phi-detail': document.getElementById('screen-hoc-phi-detail'),
+  'giao-vien': document.getElementById('screen-giao-vien'),
 };
 const titles = {
-  'grades':'Roster', 'roster':'Grade', 'attendance-grades':'Attendance',
-  'attendance':'Attendance', 'schedule':'Schedules', 'schedule-detail':'Schedule',
-  'wheel-grades':'Name Wheel', 'wheel':'Name Wheel'
+  'grades':'Lớp học', 'roster':'Grade', 'attendance-grades':'Attendance',
+  'attendance':'Attendance', 'schedule':'Lịch dạy', 'schedule-detail':'Lịch dạy',
+  'wheel-grades':'Name Wheel', 'wheel':'Name Wheel',
+  'hoc-phi':'Học phí', 'hoc-phi-detail':'Học phí',
+  'giao-vien':'Giáo viên'
 };
 const topbarTitle = document.getElementById('topbarTitle');
 const backBtn = document.getElementById('backBtn');
@@ -110,6 +115,9 @@ function showScreen(name, opts={}){
   if(name==='schedule-detail') renderScheduleDetail();
   if(name==='wheel-grades') renderGradeList('wheelGradeList','wheel');
   if(name==='wheel') renderWheel();
+  if(name==='hoc-phi') renderHocPhi();
+  if(name==='hoc-phi-detail') renderHocPhiDetail();
+  if(name==='giao-vien') renderGiaoVien();
 }
 
 document.querySelectorAll('.tab').forEach(tab=>{
@@ -307,7 +315,7 @@ function openStudentModal(id=null){
   editingStudentId=id;
   populateGradeSelect();
   studentModalDraft={};
-  if(id){
+ if(id){
     const s=state.students.find(x=>x.id===id);
     studentModalTitle.textContent='Edit Student';
     studentNameInput.value=s.studentName;
@@ -316,6 +324,7 @@ function openStudentModal(id=null){
     parentPhoneInput.value=s.parentPhone||'';
     studentNotesInput.value=s.notes||'';
     studentGradeSelect.value=s.grade;
+    document.getElementById('studentEnrollDate').value=s.enrollDate||'';
     deleteStudentBtn.hidden=false;
   }else{
     studentModalTitle.textContent=`Add Student — Grade ${activeGrade}`;
@@ -353,6 +362,7 @@ document.getElementById('saveStudentBtn').addEventListener('click',()=>{
     parentPhone: parentPhoneInput.value.trim(),
     notes: studentNotesInput.value.trim(),
     grade: parseInt(studentGradeSelect.value),
+    enrollDate: document.getElementById('studentEnrollDate').value||'',
   };
   // handle schedule enrollment changes
   const checklist = document.querySelectorAll('#studentScheduleChecklist li[data-schedule-id]');
@@ -705,6 +715,241 @@ document.getElementById('saveAddToScheduleBtn').addEventListener('click',()=>{
   saveData(); renderScheduleDetail(); closeAddToScheduleModal();
 });
 
+/* ============================================================
+   HỌC PHÍ
+   ============================================================ */
+const MONTH_NAMES=['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
+let activeHocPhiMonth = new Date().getMonth(); // 0-indexed
+let activeHocPhiFilter = 'chua'; // 'chua' | 'da' | 'tat-ca' | 'chua-lich'
+
+function feeKey(studentId, scheduleId, monthStr){ return `${monthStr}|${studentId}|${scheduleId}`; }
+function monthStr(monthIdx){ return `${new Date().getFullYear()}-${String(monthIdx+1).padStart(2,'0')}`; }
+
+function isPaid(studentId, scheduleId, monthIdx){
+  return !!state.feePayments[feeKey(studentId, scheduleId, monthStr(monthIdx))];
+}
+function togglePaid(studentId, scheduleId, monthIdx){
+  const k = feeKey(studentId, scheduleId, monthStr(monthIdx));
+  if(state.feePayments[k]) delete state.feePayments[k];
+  else state.feePayments[k]=true;
+  saveData();
+}
+
+function studentFeeStatus(s, monthIdx){
+  const scheds = state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
+  if(scheds.length===0) return 'no-schedule';
+  const paidAll = scheds.every(sc=>isPaid(s.id, sc.id, monthIdx));
+  const paidSome = scheds.some(sc=>isPaid(s.id, sc.id, monthIdx));
+  if(paidAll) return 'paid';
+  if(paidSome) return 'partial';
+  return 'unpaid';
+}
+
+function isOverdue(s){
+  if(!s.enrollDate) return false;
+  const enroll = new Date(s.enrollDate);
+  const now = new Date();
+  const diffDays = Math.floor((now - enroll) / (1000*60*60*24));
+  return diffDays >= 40;
+}
+
+function renderHocPhi(){
+  if(!state.feePayments) state.feePayments={};
+  // month row
+  const monthRow = document.getElementById('monthRow');
+  monthRow.innerHTML='';
+  MONTH_NAMES.forEach((m,i)=>{
+    const btn=document.createElement('button');
+    btn.className='month-btn'+(i===activeHocPhiMonth?' active':'');
+    btn.textContent=m;
+    btn.addEventListener('click',()=>{ activeHocPhiMonth=i; renderHocPhi(); });
+    monthRow.appendChild(btn);
+  });
+
+  const allStudents = state.students;
+  const withSchedule = allStudents.filter(s=>state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
+  const noSchedule = allStudents.filter(s=>!state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
+
+  const unpaid = withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)!=='paid');
+  const paid = withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)==='paid');
+
+  document.getElementById('hpCountChuaDong').textContent=unpaid.length;
+  document.getElementById('hpCountDaDong').textContent=paid.length;
+  document.getElementById('hpCountTatCa').textContent=withSchedule.length;
+  document.getElementById('hpCountChuaCoLich').textContent=noSchedule.length;
+
+  document.getElementById('hpBoxChuaDong').onclick=()=>{ activeHocPhiFilter='chua'; navigateTo('hoc-phi-detail',{title:'Chưa đóng học phí',showBack:true}); };
+  document.getElementById('hpBoxDaDong').onclick=()=>{ activeHocPhiFilter='da'; navigateTo('hoc-phi-detail',{title:'Đã đóng',showBack:true}); };
+  document.getElementById('hpBoxTatCa').onclick=()=>{ activeHocPhiFilter='tat-ca'; navigateTo('hoc-phi-detail',{title:'Tất cả',showBack:true}); };
+  document.getElementById('hpBoxChuaCoLich').onclick=()=>{ activeHocPhiFilter='chua-lich'; navigateTo('hoc-phi-detail',{title:'Học sinh chưa có lịch học',showBack:true}); };
+}
+
+function renderHocPhiDetail(){
+  if(!state.feePayments) state.feePayments={};
+  const allStudents = state.students;
+  const withSchedule = allStudents.filter(s=>state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
+  const noSchedule = allStudents.filter(s=>!state.schedules.some(sc=>(sc.studentIds||[]).includes(s.id)));
+
+  let list=[];
+  if(activeHocPhiFilter==='chua') list=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)!=='paid');
+  else if(activeHocPhiFilter==='da') list=withSchedule.filter(s=>studentFeeStatus(s,activeHocPhiMonth)==='paid');
+  else if(activeHocPhiFilter==='tat-ca') list=withSchedule;
+  else if(activeHocPhiFilter==='chua-lich') list=noSchedule;
+
+  list.sort((a,b)=>a.studentName.localeCompare(b.studentName));
+  const ul=document.getElementById('hocPhiStudentList');
+  ul.innerHTML='';
+  document.getElementById('hocPhiEmpty').hidden=list.length>0;
+
+  list.forEach(s=>{
+    const status=studentFeeStatus(s,activeHocPhiMonth);
+    const overdue=isOverdue(s)&&status!=='paid';
+    const partial=status==='partial';
+    const scheds=state.schedules.filter(sc=>(sc.studentIds||[]).includes(s.id));
+    const row=document.createElement('div');
+    row.className='hocphi-student-row'+(overdue?' overdue':'');
+    row.innerHTML=`
+      <div class="student-avatar">${initials(s.studentName)}</div>
+      <span class="hp-name">${escapeHtml(s.studentName)}</span>
+      ${partial?'<span class="hp-badge">!</span>':''}
+      <div class="student-color-strips">
+        ${scheds.map(sc=>{
+          const idx=state.schedules.indexOf(sc)%SCHED_COLORS.length;
+          const paid=isPaid(s.id,sc.id,activeHocPhiMonth);
+          return `<div class="pay-circle${paid?' paid':''}" data-sid="${s.id}" data-scid="${sc.id}" style="border-color:${SCHED_COLORS[idx]};${paid?'background:'+SCHED_COLORS[idx]:''}" title="${sc.name}">✓</div>`;
+        }).join('')}
+      </div>`;
+    row.querySelectorAll('.pay-circle').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        togglePaid(btn.dataset.sid, btn.dataset.scid, activeHocPhiMonth);
+        renderHocPhiDetail();
+      });
+    });
+    row.addEventListener('click',()=>openHocPhiStudentModal(s.id));
+    ul.appendChild(row);
+  });
+}
+
+// Học phí student detail modal
+const hocPhiStudentModal=document.getElementById('hocPhiStudentModal');
+function openHocPhiStudentModal(studentId){
+  closeAllModals();
+  const s=state.students.find(x=>x.id===studentId);
+  document.getElementById('hocPhiStudentName').textContent=s.studentName;
+  document.getElementById('hocPhiStudentEnroll').textContent=
+    s.enrollDate?`Ngày nhập học: ${s.enrollDate}`:'Chưa có ngày nhập học';
+  const scheds=state.schedules.filter(sc=>(sc.studentIds||[]).includes(studentId));
+  const ul=document.getElementById('hocPhiScheduleList');
+  ul.innerHTML='';
+  if(scheds.length===0){
+    ul.innerHTML='<li style="font-size:14px;color:var(--slate)">Chưa có lịch học nào.</li>';
+  }
+  scheds.forEach(sc=>{
+    const idx=state.schedules.indexOf(sc)%SCHED_COLORS.length;
+    const discount=s.scheduleDiscounts?.[sc.id];
+    const fee=discount||sc.baseFee||'—';
+    const paid=isPaid(studentId,sc.id,activeHocPhiMonth);
+    const li=document.createElement('li');
+    li.className='hocphi-sched-row';
+    li.innerHTML=`
+      <div class="sched-dot" style="background:${SCHED_COLORS[idx]}"></div>
+      <div class="sched-info">
+        <div class="sched-sname">${escapeHtml(sc.name)}</div>
+        <div class="sched-sfee">${formatFee(fee)}${discount?' (giảm)':''}</div>
+      </div>
+      <div class="pay-circle${paid?' paid':''}" style="${paid?'background:'+SCHED_COLORS[idx]+';border-color:'+SCHED_COLORS[idx]:'border-color:'+SCHED_COLORS[idx]}">✓</div>`;
+    li.querySelector('.pay-circle').addEventListener('click',e=>{
+      e.stopPropagation();
+      togglePaid(studentId,sc.id,activeHocPhiMonth);
+      openHocPhiStudentModal(studentId);
+      renderHocPhiDetail();
+    });
+    ul.appendChild(li);
+  });
+  hocPhiStudentModal.hidden=false;
+}
+hocPhiStudentModal.addEventListener('click',e=>{ if(e.target===hocPhiStudentModal) hocPhiStudentModal.hidden=true; });
+document.getElementById('closeHocPhiStudentModalBtn').addEventListener('click',()=>hocPhiStudentModal.hidden=true);
+
+/* ============================================================
+   GIÁO VIÊN
+   ============================================================ */
+let editingTeacherId=null;
+
+function renderGiaoVien(){
+  if(!state.teachers) state.teachers=[];
+  const list=document.getElementById('teacherList');
+  list.innerHTML='';
+  document.getElementById('teacherEmpty').hidden=state.teachers.length>0;
+
+  state.teachers.forEach(t=>{
+    // find matching schedules by teacher name
+    const myScheds=state.schedules.filter(s=>
+      s.teacherName && s.teacherName.trim().toLowerCase()===t.name.trim().toLowerCase()
+    );
+    const studentCount=new Set(myScheds.flatMap(s=>s.studentIds||[])).size;
+    const schedNames=myScheds.map(s=>s.name).join(', ')||'Chưa có lịch';
+
+    const card=document.createElement('div');
+    card.className='teacher-card';
+    card.innerHTML=`
+      <div class="teacher-avatar">${initials(t.name)}</div>
+      <div class="teacher-info">
+        <div class="teacher-name">${escapeHtml(t.name)}</div>
+        <div class="teacher-meta">${escapeHtml(t.phone||'Chưa có SĐT')} · ${studentCount} học sinh</div>
+        <div class="teacher-meta" style="margin-top:2px">${escapeHtml(schedNames)}</div>
+      </div>`;
+    card.addEventListener('click',()=>openTeacherModal(t.id));
+    list.appendChild(card);
+  });
+}
+
+function openTeacherModal(id=null){
+  closeAllModals();
+  editingTeacherId=id;
+  const modal=document.getElementById('teacherModal');
+  document.getElementById('teacherModalTitle').textContent=id?'Edit Teacher':'Add Teacher';
+  if(id){
+    const t=state.teachers.find(x=>x.id===id);
+    document.getElementById('teacherName').value=t.name||'';
+    document.getElementById('teacherPhone').value=t.phone||'';
+    document.getElementById('deleteTeacherBtn').hidden=false;
+  }else{
+    document.getElementById('teacherName').value='';
+    document.getElementById('teacherPhone').value='';
+    document.getElementById('deleteTeacherBtn').hidden=true;
+  }
+  modal.hidden=false;
+  setTimeout(()=>document.getElementById('teacherName').focus(),50);
+}
+function closeTeacherModal(){ document.getElementById('teacherModal').hidden=true; editingTeacherId=null; }
+
+document.getElementById('addTeacherBtn').addEventListener('click',()=>openTeacherModal());
+document.getElementById('cancelTeacherBtn').addEventListener('click',closeTeacherModal);
+document.getElementById('closeTeacherModalBtn').addEventListener('click',closeTeacherModal);
+document.getElementById('teacherModal').addEventListener('click',e=>{ if(e.target===document.getElementById('teacherModal')) closeTeacherModal(); });
+
+document.getElementById('saveTeacherBtn').addEventListener('click',()=>{
+  if(!state.teachers) state.teachers=[];
+  const name=document.getElementById('teacherName').value.trim()||'(No name)';
+  const phone=document.getElementById('teacherPhone').value.trim();
+  if(editingTeacherId){
+    const t=state.teachers.find(x=>x.id===editingTeacherId);
+    t.name=name; t.phone=phone;
+  }else{
+    state.teachers.push({id:uid(),name,phone});
+  }
+  saveData(); renderGiaoVien(); closeTeacherModal();
+});
+
+document.getElementById('deleteTeacherBtn').addEventListener('click',()=>{
+  if(!editingTeacherId) return;
+  if(confirm('Xóa giáo viên này?')){
+    state.teachers=state.teachers.filter(x=>x.id!==editingTeacherId);
+    saveData(); renderGiaoVien(); closeTeacherModal();
+  }
+});
 /* ============================================================
    ATTENDANCE
    ============================================================ */
