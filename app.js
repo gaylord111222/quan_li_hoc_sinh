@@ -1439,24 +1439,30 @@ function openWheelEditModal(){
 showLoading(true);
 DATA_REF.on('value',(snapshot)=>{
   const data=snapshot.val();
+  // always reset to safe defaults first
+  state.students=[];
+  state.schedules=[];
+  state.attendance={};
+  state.wheelRemoved={};
+  state.feePayments={};
+  state.teachers=[];
   if(data){
-    state.students=data.students||[];
-    state.schedules=data.schedules||[];
+    // Firebase can return objects instead of arrays — convert safely
+    state.students=Array.isArray(data.students)
+      ?data.students:Object.values(data.students||{});
+    state.schedules=Array.isArray(data.schedules)
+      ?data.schedules:Object.values(data.schedules||{});
+    state.teachers=Array.isArray(data.teachers)
+      ?data.teachers:Object.values(data.teachers||{});
     state.attendance=data.attendance||{};
     state.wheelRemoved=data.wheelRemoved||{};
     state.feePayments=data.feePayments||{};
-    state.teachers=data.teachers||[];
-    // ensure arrays
-    if(!Array.isArray(state.students)) state.students=Object.values(state.students||{});
-    if(!Array.isArray(state.schedules)) state.schedules=Object.values(state.schedules||{});
-    if(!Array.isArray(state.teachers)) state.teachers=Object.values(state.teachers||{});
   }
   if(!appReady){
     appReady=true;
     showLoading(false);
     showScreen('grades',{showBack:false});
   }else{
-    // live update: re-render current screen
     showScreen(currentScreen,{title:topbarTitle.textContent,showBack:!backBtn.hidden});
   }
 },(error)=>{
