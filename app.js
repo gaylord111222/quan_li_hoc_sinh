@@ -3,9 +3,7 @@
    Data syncs across all devices in real time via Firebase.
    ============================================================ */
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, set, get }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+/* Firebase loaded via CDN scripts in index.html */
 
 const firebaseConfig = {
   apiKey: "AIzaSyDB0aBW3lBZEj-x6IxFOu6s3FwtnXimeTw",
@@ -17,9 +15,9 @@ const firebaseConfig = {
   appId: "1:275559965300:web:8634e90495d2053fb46721"
 };
 
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getDatabase(firebaseApp);
-const DATA_REF = ref(db, 'appData');
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const DATA_REF = db.ref('appData');
 
 /* ============================================================
    STATE — single object, mirrors Firebase
@@ -35,7 +33,7 @@ let state = {
 let appReady = false;
 
 function saveData(){
-  set(DATA_REF, state).catch(e=>console.error('Firebase save error:', e));
+  DATA_REF.set(state).catch(e=>console.error('Firebase save error:', e));
 }
 
 /* ============================================================
@@ -1439,7 +1437,7 @@ function openWheelEditModal(){
    FIREBASE INIT — load data then start app
    ============================================================ */
 showLoading(true);
-onValue(DATA_REF,(snapshot)=>{
+DATA_REF.on('value',(snapshot)=>{
   const data=snapshot.val();
   if(data){
     state.students=data.students||[];
