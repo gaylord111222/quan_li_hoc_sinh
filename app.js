@@ -92,11 +92,11 @@ function showLoading(on){
   if(!el){
     el=document.createElement('div');
     el.id='loadingOverlay';
-    el.style.cssText='position:fixed;inset:0;background:var(--green-deep);display:flex;align-items:center;justify-content:center;z-index:999;color:var(--chalk);font-size:20px;font-weight:700;flex-direction:column;gap:16px';
+    el.style.cssText='position:fixed;inset:0;background:var(--green-deep);align-items:center;justify-content:center;z-index:999;color:var(--chalk);font-size:20px;font-weight:700;flex-direction:column;gap:16px';
     el.innerHTML='<div style="font-size:36px">📚</div><div>Loading Classroom Companion…</div>';
     document.body.appendChild(el);
   }
-  el.hidden=!on;
+  el.style.display = on ? 'flex' : 'none';
 }
 
 /* ============================================================
