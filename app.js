@@ -40,7 +40,7 @@ function saveData(){
    CONSTANTS
    ============================================================ */
 let GRADES = [1,2,3,4,5,6,7,8,9];
-const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const DAY_NAMES = ['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Thứ sáu','Thứ bảy'];
 const MONTH_NAMES = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
 const SCHED_COLORS = [
   '#2F4538','#E8B84B','#C45B4D','#4A7FB5',
@@ -164,7 +164,7 @@ backBtn.addEventListener('click',()=>{
   if(prev) showScreen(prev.name,prev.opts);
   else{
     if(currentScreen==='roster') showScreen('grades',{showBack:false});
-    else if(currentScreen==='attendance') showScreen('attendance-grades',{showBack:false});
+    
     else if(currentScreen==='schedule-detail'){
       if(activeGrade) showScreen('roster',{title:`Grade ${activeGrade}`,showBack:true});
       else showScreen('schedule',{showBack:false});
@@ -497,16 +497,26 @@ const scheduleModal=document.getElementById('scheduleModal');
 function openScheduleModal(id=null){
   closeAllModals();
   editingScheduleId=id;
-  document.getElementById('scheduleModalTitle').textContent=id?'Edit Schedule':'Add Schedule';
+  document.getElementById('scheduleModalTitle').textContent=id?'Sửa lịch dạy':'Thêm lịch dạy';
+  // populate grade selector
+  const gradeSelect=document.getElementById('scheduleGradeSelect');
+  gradeSelect.innerHTML='';
+  GRADES.forEach(g=>{
+    const opt=document.createElement('option');
+    opt.value=g; opt.textContent=`Khối ${g}`;
+    gradeSelect.appendChild(opt);
+  });
   if(id){
     const s=(state.schedules||[]).find(x=>x.id===id);
     document.getElementById('scheduleSubject').value=s.name||'';
     document.getElementById('scheduleTeacher').value=s.teacherName||'';
     document.getElementById('scheduleBaseFee').value=s.baseFee||'';
+    gradeSelect.value=s.grade||GRADES[0];
   }else{
     document.getElementById('scheduleSubject').value='';
     document.getElementById('scheduleTeacher').value='';
     document.getElementById('scheduleBaseFee').value='';
+    gradeSelect.value=activeGrade||GRADES[0];
   }
   scheduleModal.hidden=false;
   setTimeout(()=>document.getElementById('scheduleSubject').focus(),50);
@@ -520,11 +530,12 @@ document.getElementById('saveScheduleBtn').addEventListener('click',()=>{
   const teacherName=document.getElementById('scheduleTeacher').value.trim();
   const baseFee=document.getElementById('scheduleBaseFee').value.trim();
   if(!state.schedules) state.schedules=[];
+  const selectedGrade=parseInt(document.getElementById('scheduleGradeSelect').value);
   if(editingScheduleId){
     const s=state.schedules.find(x=>x.id===editingScheduleId);
-    if(s){ s.name=name; s.teacherName=teacherName; s.baseFee=baseFee; }
+    if(s){ s.name=name; s.teacherName=teacherName; s.baseFee=baseFee; s.grade=selectedGrade; }
   }else{
-    state.schedules.push({id:uid(),grade:activeGrade,name,teacherName,baseFee,timeBlocks:[],studentIds:[]});
+    state.schedules.push({id:uid(),grade:selectedGrade,name,teacherName,baseFee,timeBlocks:[],studentIds:[]});
   }
   saveData(); renderGradeScheduleRow(); renderScheduleOverview(); closeScheduleModal();
 });
@@ -1277,10 +1288,12 @@ document.getElementById('deleteTeacherBtn').addEventListener('click',()=>{
 });
 
 /* ============================================================
-   NAME WHEEL — grouped by schedule
+   DUCK RACE — Random picker
    ============================================================ */
 let activeWheelScheduleId=null;
-let wheelCustomList=null; // null = use schedule's students, array = manually edited
+let wheelCustomList=null;
+let raceRunning=false;
+let raceAnimFrame=null;
 
 function renderWheelGrades(){
   const list=document.getElementById('wheelGradeList');
@@ -1291,74 +1304,18 @@ function renderWheelGrades(){
     const li=document.createElement('li');
     li.className='grade-card';
     li.innerHTML=`<span class="grade-num">Grade ${g}</span>
-      <span class="grade-label">${count} student${count===1?'':'s'}</span>`;
+      <span class="grade-label">${count} học sinh</span>`;
     li.addEventListener('click',()=>{
       activeGrade=g;
-      navigateTo('wheel',{title:`Grade ${g} · Wheel`,showBack:true});
+      navigateTo('wheel',{title:`Grade ${g} · Random`,showBack:true});
     });
     list.appendChild(li);
   });
 }
 
-const wheelCanvas=document.getElementById('wheelCanvas');
-const ctx=wheelCanvas.getContext('2d');
-const wheelResult=document.getElementById('wheelResult');
-const wheelEmpty=document.getElementById('wheelEmpty');
-const removeOnPick=document.getElementById('removeOnPick');
-const spinBtn=document.getElementById('spinBtn');
-const WHEEL_COLORS=SCHED_COLORS;
-let currentRotation=0;
-let spinning=false;
-
-function renderWheel(){
-  // build schedule chips for this grade inside wheel screen
-  let chipContainer=document.getElementById('wheelSchedChips');
-  if(!chipContainer){
-    chipContainer=document.createElement('div');
-    chipContainer.id='wheelSchedChips';
-    chipContainer.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:0 0 14px;justify-content:center';
-    wheelCanvas.parentElement.parentElement.insertBefore(chipContainer,wheelCanvas.parentElement);
-  }
-  chipContainer.innerHTML='';
-
-  const gradeScheds=(state.schedules||[]).filter(s=>s.grade===activeGrade);
-
-  // "All students" chip
-  const allChip=document.createElement('button');
-  allChip.className='schedule-chip'+(activeWheelScheduleId===null?' active':'');
-  allChip.style.background=activeWheelScheduleId===null?'var(--green-deep)':'var(--slate)';
-  allChip.textContent='Tất cả';
-  allChip.addEventListener('click',()=>{ activeWheelScheduleId=null; wheelCustomList=null; currentRotation=0; renderWheel(); });
-  chipContainer.appendChild(document.createElement('span').appendChild(allChip)||allChip);
-
-  gradeScheds.forEach((s,i)=>{
-    const color=SCHED_COLORS[(state.schedules||[]).indexOf(s)%SCHED_COLORS.length];
-    const chip=document.createElement('button');
-    chip.className='schedule-chip';
-    chip.style.background=activeWheelScheduleId===s.id?color:color+'99';
-    chip.textContent=s.name;
-    chip.addEventListener('click',()=>{
-      activeWheelScheduleId=s.id; wheelCustomList=null; currentRotation=0; renderWheel();
-    });
-    chipContainer.appendChild(chip);
-  });
-
-  // pencil button
-  const editBtn=document.createElement('button');
-  editBtn.className='btn-icon small';
-  editBtn.style.cssText='background:var(--chalk-dim);color:var(--green-deep);margin-left:4px';
-  editBtn.textContent='✏️';
-  editBtn.addEventListener('click',()=>openWheelEditModal());
-  chipContainer.appendChild(editBtn);
-
-  currentRotation=0;
-  wheelResult.textContent='';
-  drawWheel();
-}
-
-function getWheelStudents(){
+function getDuckStudents(){
   if(wheelCustomList) return wheelCustomList;
-  const removed=state.wheelRemoved?.[activeWheelScheduleId||('grade_'+activeGrade)]||[];
+  const removed=(state.wheelRemoved||{})[activeWheelScheduleId||('grade_'+activeGrade)]||[];
   let students;
   if(activeWheelScheduleId){
     const sc=(state.schedules||[]).find(x=>x.id===activeWheelScheduleId);
@@ -1369,59 +1326,131 @@ function getWheelStudents(){
   return students.filter(s=>!removed.includes(s.id));
 }
 
-function drawWheel(){
-  const students=getWheelStudents();
-  const size=wheelCanvas.width;
-  const cx=size/2,cy=size/2,r=size/2-4;
-  ctx.clearRect(0,0,size,size);
-  wheelEmpty.hidden=students.length>0;
-  spinBtn.style.visibility=students.length>0?'visible':'hidden';
-  if(students.length===0) return;
-  const slice=(2*Math.PI)/students.length;
-  ctx.save(); ctx.translate(cx,cy); ctx.rotate(currentRotation);
-  students.forEach((s,i)=>{
-    const start=i*slice,end=start+slice;
-    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r,start,end); ctx.closePath();
-    ctx.fillStyle=WHEEL_COLORS[i%WHEEL_COLORS.length]; ctx.fill();
-    ctx.save(); ctx.rotate(start+slice/2); ctx.textAlign='right';
-    ctx.fillStyle='#F7F4EC';
-    ctx.font=students.length>14?'600 10px sans-serif':'700 13px sans-serif';
-    const label=s.studentName.length>16?s.studentName.slice(0,15)+'…':s.studentName;
-    ctx.fillText(label,r-12,4); ctx.restore();
+function renderWheel(){
+  raceRunning=false;
+  if(raceAnimFrame) cancelAnimationFrame(raceAnimFrame);
+  document.getElementById('duckResult').textContent='';
+  document.getElementById('raceStartBtn').textContent='🏁 Bắt đầu đua!';
+  document.getElementById('raceStartBtn').disabled=false;
+
+  // schedule chips
+  let chipContainer=document.getElementById('wheelSchedChips');
+  if(!chipContainer){
+    chipContainer=document.createElement('div');
+    chipContainer.id='wheelSchedChips';
+    chipContainer.style.cssText='display:flex;flex-wrap:wrap;gap:8px;padding:0 0 14px;justify-content:center';
+    document.getElementById('screen-wheel').insertBefore(chipContainer,document.getElementById('duckRaceWrap'));
+  }
+  chipContainer.innerHTML='';
+
+  const gradeScheds=(state.schedules||[]).filter(s=>s.grade===activeGrade);
+  const allChip=document.createElement('button');
+  allChip.className='schedule-chip';
+  allChip.style.background=activeWheelScheduleId===null?'var(--green-deep)':'var(--slate)';
+  allChip.textContent='Tất cả';
+  allChip.addEventListener('click',()=>{ activeWheelScheduleId=null; wheelCustomList=null; renderWheel(); });
+  chipContainer.appendChild(allChip);
+  gradeScheds.forEach(s=>{
+    const idx=(state.schedules||[]).indexOf(s)%SCHED_COLORS.length;
+    const color=SCHED_COLORS[idx];
+    const chip=document.createElement('button');
+    chip.className='schedule-chip';
+    chip.style.background=activeWheelScheduleId===s.id?color:color+'99';
+    chip.textContent=s.name;
+    chip.addEventListener('click',()=>{ activeWheelScheduleId=s.id; wheelCustomList=null; renderWheel(); });
+    chipContainer.appendChild(chip);
   });
-  ctx.restore();
+  const editBtn=document.createElement('button');
+  editBtn.className='btn-icon small';
+  editBtn.style.cssText='background:var(--chalk-dim);color:var(--green-deep)';
+  editBtn.textContent='✏️';
+  editBtn.addEventListener('click',openWheelEditModal);
+  chipContainer.appendChild(editBtn);
+
+  buildDuckLanes();
 }
 
-spinBtn.addEventListener('click',()=>{
-  if(spinning) return;
-  const students=getWheelStudents();
+function buildDuckLanes(){
+  const students=getDuckStudents();
+  const river=document.getElementById('duckRiver');
+  river.innerHTML='';
+  document.getElementById('wheelEmpty').hidden=students.length>0;
+  document.getElementById('raceStartBtn').style.display=students.length>0?'block':'none';
+  students.forEach((s,i)=>{
+    const lane=document.createElement('div');
+    lane.className='duck-lane';
+    const duck=document.createElement('div');
+    duck.className='duck';
+    duck.id='duck_'+s.id;
+    duck.style.left='8px';
+    duck.innerHTML=`🦆<span class="duck-name">${escapeHtml(s.studentName)}</span>`;
+    lane.appendChild(duck);
+    river.appendChild(lane);
+  });
+}
+
+document.getElementById('raceStartBtn').addEventListener('click',()=>{
+  if(raceRunning) return;
+  const students=getDuckStudents();
   if(students.length===0) return;
-  spinning=true; wheelResult.textContent='';
-  const slice=(2*Math.PI)/students.length;
-  const winnerIndex=Math.floor(Math.random()*students.length);
-  const target=winnerIndex*slice+slice/2;
-  const extra=5+Math.random()*2;
-  const final=currentRotation+(extra*2*Math.PI)+(-Math.PI/2-target-currentRotation%(2*Math.PI));
-  const duration=4200,startRot=currentRotation,delta=final-startRot,startTime=performance.now();
-  function animate(now){
-    const elapsed=now-startTime,t=Math.min(elapsed/duration,1),eased=1-Math.pow(1-t,4);
-    currentRotation=startRot+delta*eased; drawWheel();
-    if(t<1){ requestAnimationFrame(animate); }
-    else{
-      spinning=false;
-      const winner=students[winnerIndex];
-      wheelResult.textContent=winner.studentName;
-      if(removeOnPick.checked){
+  raceRunning=true;
+  document.getElementById('duckResult').textContent='';
+  document.getElementById('raceStartBtn').disabled=true;
+  document.getElementById('raceStartBtn').textContent='🏃 Đang đua...';
+
+  // assign random speeds to each duck
+  const raceWrap=document.getElementById('duckRaceWrap');
+  const finishX=raceWrap.offsetWidth-40; // finish line position in px
+  const duckData=students.map(s=>({
+    id:s.id,
+    name:s.studentName,
+    pos:8,
+    // base speed 1-3px per frame + random wobble
+    speed:1+Math.random()*2,
+    wobble:Math.random()*0.5,
+    finished:false,
+  }));
+
+  // pre-determine winner for fairness — one random student always wins
+  const winnerIdx=Math.floor(Math.random()*duckData.length);
+  // give winner slightly higher guaranteed speed
+  duckData[winnerIdx].speed=Math.max(duckData[winnerIdx].speed, 2.5+Math.random()*0.5);
+
+  function frame(){
+    let allDone=true;
+    let winner=null;
+    duckData.forEach(d=>{
+      if(d.finished) return;
+      allDone=false;
+      // random speed variation each frame for natural movement
+      const thisSpeed=d.speed+(Math.random()-0.5)*d.wobble;
+      d.pos+=thisSpeed;
+      const el=document.getElementById('duck_'+d.id);
+      if(el) el.style.left=d.pos+'px';
+      if(d.pos>=finishX){
+        d.finished=true;
+        if(!winner) winner=d;
+      }
+    });
+    if(winner){
+      raceRunning=false;
+      document.getElementById('duckResult').textContent=`🏆 ${winner.name} thắng!`;
+      document.getElementById('raceStartBtn').disabled=false;
+      document.getElementById('raceStartBtn').textContent='🏁 Đua lại!';
+      if(document.getElementById('removeOnPick').checked){
         const key=activeWheelScheduleId||('grade_'+activeGrade);
         if(!state.wheelRemoved) state.wheelRemoved={};
         if(!state.wheelRemoved[key]) state.wheelRemoved[key]=[];
-        state.wheelRemoved[key].push(winner.id);
-        saveData(); setTimeout(drawWheel,600);
+        const winnerStudent=students.find(s=>s.id===winner.id);
+        if(winnerStudent){ state.wheelRemoved[key].push(winner.id); saveData(); }
+        setTimeout(()=>{ renderWheel(); },1200);
       }
-      if(navigator.vibrate) navigator.vibrate(40);
+      if(navigator.vibrate) navigator.vibrate(60);
+      return;
     }
+    if(!allDone) raceAnimFrame=requestAnimationFrame(frame);
   }
-  requestAnimationFrame(animate);
+  raceAnimFrame=requestAnimationFrame(frame);
 });
 
 document.getElementById('resetWheelBtn').addEventListener('click',()=>{
@@ -1429,14 +1458,14 @@ document.getElementById('resetWheelBtn').addEventListener('click',()=>{
   if(!state.wheelRemoved) state.wheelRemoved={};
   state.wheelRemoved[key]=[];
   wheelCustomList=null;
-  saveData(); wheelResult.textContent=''; drawWheel();
+  saveData(); renderWheel();
 });
 
-/* Wheel edit modal — manually add/remove names */
+document.getElementById('editDuckListBtn').addEventListener('click',openWheelEditModal);
+
 function openWheelEditModal(){
   closeAllModals();
-  const students=getWheelStudents();
-  // build a simple modal on the fly
+  const students=getDuckStudents();
   let modal=document.getElementById('wheelEditModal');
   if(!modal){
     modal=document.createElement('div');
@@ -1444,15 +1473,15 @@ function openWheelEditModal(){
     modal.className='modal-backdrop';
     modal.innerHTML=`<div class="modal">
       <div class="modal-header">
-        <h2>Edit Wheel List</h2>
+        <h2>Chỉnh sửa danh sách</h2>
         <button class="modal-close" id="closeWheelEditBtn">✕</button>
       </div>
-      <p style="font-size:14px;color:var(--slate);margin:0 0 10px">One name per line. Edit freely — changes only affect this wheel session.</p>
-      <textarea id="wheelEditArea" style="width:100%;min-height:200px;padding:11px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;font-family:inherit;resize:vertical"></textarea>
+      <p style="font-size:14px;color:var(--slate);margin:0 0 10px">Mỗi tên một dòng. Thay đổi chỉ áp dụng cho lần đua này.</p>
+      <textarea id="wheelEditArea" style="width:100%;min-height:180px;padding:11px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;font-family:inherit;resize:vertical"></textarea>
       <div class="modal-actions" style="margin-top:12px">
         <div class="modal-actions-right">
-          <button class="btn-text" id="cancelWheelEditBtn">Cancel</button>
-          <button class="btn-solid" id="saveWheelEditBtn">Apply</button>
+          <button class="btn-text" id="cancelWheelEditBtn">Hủy</button>
+          <button class="btn-solid" id="saveWheelEditBtn">Áp dụng</button>
         </div>
       </div>
     </div>`;
@@ -1466,13 +1495,136 @@ function openWheelEditModal(){
         const existing=(state.students||[]).find(s=>s.studentName===name);
         return existing||{id:'custom_'+uid(),studentName:name,parentName:'',grade:activeGrade};
       });
-      modal.hidden=true; currentRotation=0; drawWheel();
+      modal.hidden=true; renderWheel();
     });
   }
   document.getElementById('wheelEditArea').value=students.map(s=>s.studentName).join('\n');
   modal.hidden=false;
 }
 
+/* ============================================================
+   XUẤT FILE — Export student list to Excel + Word
+   ============================================================ */
+document.getElementById('xuatFileBtn').addEventListener('click',()=>{
+  closeAllModals();
+  document.getElementById('xuatFileModal').hidden=false;
+});
+document.getElementById('closeXuatFileModalBtn').addEventListener('click',()=>{
+  document.getElementById('xuatFileModal').hidden=true;
+});
+document.getElementById('xuatFileModal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('xuatFileModal'))
+    document.getElementById('xuatFileModal').hidden=true;
+});
+
+function buildExportRows(sortMode){
+  const rows=[];
+  const students=state.students||[];
+  let stt=1;
+
+  function addStudent(s){
+    rows.push({
+      stt:stt++,
+      ten:s.studentName||'',
+      ph:s.parentName||'',
+      sdt:s.parentPhone||'',
+      ngay:s.enrollDate||'',
+    });
+  }
+
+  if(sortMode==='khoi'){
+    const grades=[...new Set(students.map(s=>s.grade))].sort((a,b)=>a-b);
+    grades.forEach(g=>{
+      rows.push({type:'grade',label:`Khối ${g}`});
+      students.filter(s=>s.grade===g)
+        .sort((a,b)=>a.studentName.localeCompare(b.studentName))
+        .forEach(addStudent);
+      rows.push({type:'empty'});
+    });
+  } else {
+    const grades=[...new Set(students.map(s=>s.grade))].sort((a,b)=>a-b);
+    grades.forEach(g=>{
+      rows.push({type:'grade',label:`Khối ${g}`});
+      const scheds=(state.schedules||[]).filter(s=>s.grade===g);
+      const shownIds=new Set();
+      scheds.forEach(sc=>{
+        const inSched=students.filter(s=>s.grade===g&&(sc.studentIds||[]).includes(s.id));
+        if(inSched.length===0) return;
+        rows.push({type:'sched',label:`Suất: ${sc.name}${sc.teacherName?' — GV: '+sc.teacherName:''}`});
+        inSched.sort((a,b)=>a.studentName.localeCompare(b.studentName)).forEach(s=>{ addStudent(s); shownIds.add(s.id); });
+        rows.push({type:'empty'});
+      });
+      const noSched=students.filter(s=>s.grade===g&&!shownIds.has(s.id));
+      if(noSched.length>0){
+        rows.push({type:'sched',label:'Chưa có suất học'});
+        noSched.sort((a,b)=>a.studentName.localeCompare(b.studentName)).forEach(addStudent);
+        rows.push({type:'empty'});
+      }
+      rows.push({type:'empty'});
+    });
+  }
+  return rows;
+}
+
+document.getElementById('xuatExcelBtn').addEventListener('click',()=>{
+  const sortMode=document.querySelector('input[name="xuatSort"]:checked').value;
+  const rows=buildExportRows(sortMode);
+
+  // build CSV (universal, opens in Excel)
+  const headers=['STT','Tên học sinh','Tên phụ huynh','SĐT phụ huynh','Ngày nhập học'];
+  const csvLines=['\uFEFF'+headers.join(',')]; // BOM for Vietnamese characters in Excel
+
+  rows.forEach(r=>{
+    if(r.type==='empty'){ csvLines.push(''); return; }
+    if(r.type==='grade'||r.type==='sched'){ csvLines.push(`"${r.label}",,,,`); return; }
+    csvLines.push([r.stt,`"${r.ten}"`,`"${r.ph}"`,`"${r.sdt}"`,`"${r.ngay}"`].join(','));
+  });
+
+  const blob=new Blob([csvLines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`danh_sach_hoc_sinh_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  document.getElementById('xuatFileModal').hidden=true;
+});
+
+document.getElementById('xuatWordBtn').addEventListener('click',()=>{
+  const sortMode=document.querySelector('input[name="xuatSort"]:checked').value;
+  const rows=buildExportRows(sortMode);
+
+  // build HTML table then wrap in Word-compatible HTML
+  let tableRows='<tr style="background:#2F4538;color:#fff"><th>STT</th><th>Tên học sinh</th><th>Tên phụ huynh</th><th>SĐT phụ huynh</th><th>Ngày nhập học</th></tr>';
+  rows.forEach(r=>{
+    if(r.type==='empty'){ tableRows+=`<tr><td colspan="5">&nbsp;</td></tr>`; return; }
+    if(r.type==='grade'){ tableRows+=`<tr style="background:#E9E4D6"><td colspan="5"><b>${r.label}</b></td></tr>`; return; }
+    if(r.type==='sched'){ tableRows+=`<tr style="background:#F7F4EC"><td colspan="5"><i>${r.label}</i></td></tr>`; return; }
+    tableRows+=`<tr><td>${r.stt}</td><td>${r.ten}</td><td>${r.ph}</td><td>${r.sdt}</td><td>${r.ngay}</td></tr>`;
+  });
+
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:w="urn:schemas-microsoft-com:office:word"
+    xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8">
+    <style>
+      body{font-family:Arial,sans-serif;font-size:12pt}
+      h1{font-size:16pt;text-align:center;color:#2F4538}
+      table{border-collapse:collapse;width:100%}
+      td,th{border:1px solid #ccc;padding:6px 10px;font-size:11pt}
+      th{font-weight:bold}
+    </style></head>
+    <body>
+    <h1>Danh sách học sinh</h1>
+    <p style="text-align:center;color:#666">Xuất ngày: ${new Date().toLocaleDateString('vi-VN')}</p>
+    <table>${tableRows}</table>
+    </body></html>`;
+
+  const blob=new Blob([html],{type:'application/msword'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`danh_sach_hoc_sinh_${new Date().toISOString().slice(0,10)}.doc`;
+  a.click();
+  document.getElementById('xuatFileModal').hidden=true;
+});
 /* ============================================================
    FIREBASE INIT — load data then start app
    ============================================================ */
