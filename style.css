@@ -987,3 +987,49 @@ body{
 .sched-color-6{background:#D4813A;}
 .sched-color-7{background:#5C8A3C;}
 .sched-color-8{background:#B5507A;}
+/* ── Học sinh tab ── */
+.hoc-sinh-total{
+  flex:1;
+  font-size:18px;
+  font-weight:800;
+  color:var(--green-deep);
+  padding:4px 0;
+}
+.sort-options{
+  display:flex;
+  gap:8px;
+  margin-bottom:14px;
+  flex-wrap:wrap;
+}
+.sort-btn{
+  border:1.5px solid var(--chalk-dim);
+  background:#fff;
+  border-radius:999px;
+  padding:8px 18px;
+  font-size:15px;
+  font-weight:700;
+  color:var(--slate);
+  cursor:pointer;
+}
+.sort-btn.active{
+  background:var(--green-deep);
+  color:var(--chalk);
+  border-color:var(--green-deep);
+}
+.hs-divider{
+  padding:10px 2px 4px;
+  font-size:15px;
+  font-weight:800;
+  margin-top:6px;
+}
+.hs-divider.grade-divider{
+  color:var(--green-deep);
+  border-top:2px solid var(--chalk-dim);
+  margin-top:12px;
+}
+.hs-divider.sched-divider{
+  color:#fff;
+  border-radius:8px;
+  padding:8px 14px;
+  margin:10px 0 6px;
+}
