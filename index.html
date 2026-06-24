@@ -43,22 +43,21 @@
     <p class="empty-state" id="rosterEmpty">No students yet. Tap + to add one.</p>
   </section>
 
-  <!-- ATTENDANCE: GRADE PICKER -->
-  <section class="screen" id="screen-attendance-grades" hidden>
-    <ul class="grade-list" id="attendanceGradeList"></ul>
-  </section>
-
-  <!-- ATTENDANCE: STUDENT LIST FOR A GRADE -->
-  <section class="screen" id="screen-attendance" hidden>
+  <!-- HỌC SINH SCREEN -->
+  <section class="screen" id="screen-hoc-sinh" hidden>
     <div class="toolbar">
-      <input type="date" id="attendanceDate">
+      <span class="hoc-sinh-total" id="hocSinhTotal">0 học sinh</span>
+      <button class="btn-icon small" id="sortStudentsBtn" aria-label="Sort">⇅</button>
     </div>
-    <div class="attendance-actions">
-      <button class="chip" id="markAllPresent">Mark all present</button>
-      <button class="chip" id="markAllAbsent">Mark all absent</button>
+    <div id="hocSinhSortBar" hidden>
+      <div class="sort-options">
+        <button class="sort-btn active" data-sort="az">A → Z</button>
+        <button class="sort-btn" data-sort="lop">Lớp học</button>
+        <button class="sort-btn" data-sort="lich">Lịch học</button>
+      </div>
     </div>
-    <ul class="attendance-list" id="attendanceList"></ul>
-    <p class="empty-state" id="attendanceEmpty">No students in this grade yet.</p>
+    <div id="hocSinhList"></div>
+    <p class="empty-state" id="hocSinhEmpty">Chưa có học sinh nào.</p>
   </section>
 
   <!-- SCHEDULE TAB: ALL SCHEDULES OVERVIEW -->
@@ -99,10 +98,10 @@
         <span class="sched-label">Thời gian</span>
         <ul class="time-block-list" id="detailTimeBlocks"></ul>
       </div>
-      <button class="chip" id="addTimeBlockBtn">+ Add time block</button>
+      <button class="chip" id="addTimeBlockBtn">+ Thêm khung giờ</button>
     </div>
     <label style="display:block;margin:14px 0 4px;font-size:14px;font-weight:700;color:var(--slate)">
-      Ghi chú lịch học (progress notes)
+      Ghi chú lịch học <span id="scheduleNotesTimestamp" style="font-size:12px;font-weight:500;color:var(--pencil-dark)"></span>
     </label>
     <textarea id="scheduleNotes" style="width:100%;padding:11px 13px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;font-family:inherit;min-height:80px;resize:vertical;background:#fff;color:var(--green-deep)" placeholder="Ghi chú tiến độ học, nội dung bài…"></textarea>
     <button class="btn-solid" id="saveScheduleNotesBtn" style="margin-top:8px">Lưu ghi chú</button>
@@ -184,10 +183,7 @@
   <button class="tab active" data-screen="grades">
     <span class="tab-icon">☰</span><span>Lớp học</span>
   </button>
-  <button class="tab" data-screen="attendance-grades">
-    <span class="tab-icon">✓</span><span>Attendance</span>
-  </button>
-  <button class="tab" data-screen="schedule">
+   <button class="tab" data-screen="schedule">
     <span class="tab-icon">▦</span><span>lịch dạy</span>
   </button>
   <button class="tab" data-screen="wheel-grades">
@@ -198,6 +194,9 @@
   </button>
   <button class="tab" data-screen="giao-vien">
     <span class="tab-icon">👤</span><span>Giáo viên</span>
+  </button>
+  <button class="tab" data-screen="hoc-sinh">
+    <span class="tab-icon">👥</span><span>Học sinh</span>
   </button>
 </nav>
 
