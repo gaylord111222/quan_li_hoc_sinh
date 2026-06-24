@@ -39,7 +39,7 @@ function saveData(){
 /* ============================================================
    CONSTANTS
    ============================================================ */
-const GRADES = [1,2,3,4,5,6,7,8,9];
+let GRADES = [1,2,3,4,5,6,7,8,9];
 const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const MONTH_NAMES = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
 const SCHED_COLORS = [
@@ -105,21 +105,21 @@ function showLoading(on){
 const allScreens={
   'grades':document.getElementById('screen-grades'),
   'roster':document.getElementById('screen-roster'),
-  'attendance-grades':document.getElementById('screen-attendance-grades'),
-  'attendance':document.getElementById('screen-attendance'),
   'schedule':document.getElementById('screen-schedule'),
   'schedule-detail':document.getElementById('screen-schedule-detail'),
   'wheel-grades':document.getElementById('screen-wheel-grades'),
   'wheel':document.getElementById('screen-wheel'),
   'hoc-phi':document.getElementById('screen-hoc-phi'),
+  'hoc-sinh':document.getElementById('screen-hoc-sinh'),
   'hoc-phi-detail':document.getElementById('screen-hoc-phi-detail'),
   'giao-vien':document.getElementById('screen-giao-vien'),
 };
 const titles={
-  'grades':'Lớp học','roster':'Grade','attendance-grades':'Attendance',
-  'attendance':'Attendance','schedule':'Lịch dạy','schedule-detail':'Lịch dạy',
+  'grades':'Lớp học','roster':'Grade',
+  'schedule':'Lịch dạy','schedule-detail':'Lịch dạy',
   'wheel-grades':'Name Wheel','wheel':'Name Wheel',
-  'hoc-phi':'Học phí','hoc-phi-detail':'Học phí','giao-vien':'Giáo viên'
+  'hoc-phi':'Học phí','hoc-phi-detail':'Học phí',
+  'giao-vien':'Giáo viên','hoc-sinh':'Học sinh'
 };
 const topbarTitle=document.getElementById('topbarTitle');
 const backBtn=document.getElementById('backBtn');
@@ -135,8 +135,7 @@ function showScreen(name,opts={}){
   backBtn.hidden=!opts.showBack;
   if(name==='grades') renderGradeList();
   if(name==='roster'){ renderGradeScheduleRow(); renderRoster(); }
-  if(name==='attendance-grades') renderGradeList('attendanceGradeList','attendance');
-  if(name==='attendance') renderAttendance();
+  if(name==='hoc-sinh') renderHocSinh();
   if(name==='schedule') renderScheduleOverview();
   if(name==='schedule-detail') renderScheduleDetail();
   if(name==='wheel-grades') renderWheelGrades();
@@ -191,11 +190,26 @@ function renderGradeList(listId='gradeList',mode='roster'){
     li.addEventListener('click',()=>{
       activeGrade=g;
       if(mode==='roster') navigateTo('roster',{title:`Grade ${g}`,showBack:true});
-      if(mode==='attendance') navigateTo('attendance',{title:`Grade ${g} · Attendance`,showBack:true});
       if(mode==='wheel') navigateTo('wheel',{title:`Grade ${g} · Wheel`,showBack:true});
     });
     list.appendChild(li);
   });
+  // + add grade button (only on roster grade list)
+  if(listId==='gradeList'){
+    const li=document.createElement('li');
+    li.className='grade-card';
+    li.style.cssText='border:2px dashed var(--chalk-dim);background:transparent;align-items:center;justify-content:center;min-height:90px';
+    li.innerHTML=`<span style="font-size:28px;color:var(--slate)">+</span>
+      <span style="font-size:13px;color:var(--slate);font-weight:700">Add Grade</span>`;
+    li.addEventListener('click',()=>{
+      const next=Math.max(...GRADES)+1;
+      if(confirm(`Add Grade ${next}?`)){
+        GRADES.push(next);
+        renderGradeList('gradeList','roster');
+      }
+    });
+    list.appendChild(li);
+  }
 }
 
 /* ============================================================
@@ -527,6 +541,7 @@ function renderScheduleDetail(){
   document.getElementById('detailTeacher').style.cursor='pointer';
   document.getElementById('detailFeeBtn').textContent=s.baseFee?formatFee(s.baseFee):'Tap to set';
   document.getElementById('scheduleNotes').value=s.notes||'';
+  document.getElementById('scheduleNotesTimestamp').textContent=s.notesTimestamp||'';
 
   const tbList=document.getElementById('detailTimeBlocks');
   tbList.innerHTML='';
@@ -582,9 +597,16 @@ document.getElementById('saveScheduleNotesBtn').addEventListener('click',()=>{
   const s=(state.schedules||[]).find(x=>x.id===activeScheduleId);
   if(!s) return;
   s.notes=document.getElementById('scheduleNotes').value;
+  const now=new Date();
+  const days=['CN','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'];
+  const dayName=days[now.getDay()];
+  const dateStr=`${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
+  const timeStr=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  s.notesTimestamp=`${dayName} ${dateStr} ${timeStr}`;
   saveData();
   const btn=document.getElementById('saveScheduleNotesBtn');
   btn.textContent='✓ Saved'; setTimeout(()=>btn.textContent='Lưu ghi chú',1500);
+  document.getElementById('scheduleNotesTimestamp').textContent=s.notesTimestamp;
 });
 document.getElementById('deleteScheduleDetailBtn').addEventListener('click',()=>{
   if(confirm('Delete this schedule?')){
@@ -918,59 +940,77 @@ document.getElementById('saveAddToScheduleBtn').addEventListener('click',()=>{
 });
 
 /* ============================================================
-   ATTENDANCE
+   HỌC SINH TAB
    ============================================================ */
-const attendanceDate=document.getElementById('attendanceDate');
-const attendanceList=document.getElementById('attendanceList');
-const attendanceEmpty=document.getElementById('attendanceEmpty');
-function todayStr(){
-  const d=new Date(); const off=d.getTimezoneOffset();
-  return new Date(d.getTime()-off*60000).toISOString().slice(0,10);
+let currentSort='az';
+
+function renderHocSinh(){
+  const allStudents=state.students||[];
+  document.getElementById('hocSinhTotal').textContent=`${allStudents.length} học sinh`;
+  document.getElementById('hocSinhEmpty').hidden=allStudents.length>0;
+  const listEl=document.getElementById('hocSinhList');
+  listEl.innerHTML='';
+
+  if(currentSort==='az'){
+    const sorted=[...allStudents].sort((a,b)=>a.studentName.localeCompare(b.studentName));
+    sorted.forEach(s=>listEl.appendChild(makeStudentCard(s)));
+  }
+  else if(currentSort==='lop'){
+    const grades=[...new Set(allStudents.map(s=>s.grade))].sort((a,b)=>a-b);
+    grades.forEach(g=>{
+      const div=document.createElement('div');
+      div.className='hs-divider grade-divider';
+      div.textContent=`Grade ${g}`;
+      listEl.appendChild(div);
+      allStudents.filter(s=>s.grade===g)
+        .sort((a,b)=>a.studentName.localeCompare(b.studentName))
+        .forEach(s=>listEl.appendChild(makeStudentCard(s)));
+    });
+  }
+  else if(currentSort==='lich'){
+    const scheds=state.schedules||[];
+    const shownIds=new Set();
+    scheds.forEach(sc=>{
+      const idx=(state.schedules||[]).indexOf(sc)%SCHED_COLORS.length;
+      const color=SCHED_COLORS[idx];
+      const students=(sc.studentIds||[])
+        .map(id=>allStudents.find(s=>s.id===id))
+        .filter(Boolean)
+        .sort((a,b)=>a.studentName.localeCompare(b.studentName));
+      if(students.length===0) return;
+      const div=document.createElement('div');
+      div.className='hs-divider sched-divider';
+      div.style.background=color;
+      div.textContent=sc.name;
+      listEl.appendChild(div);
+      students.forEach(s=>{ listEl.appendChild(makeStudentCard(s)); shownIds.add(s.id); });
+    });
+    // students with no schedule
+    const noSched=allStudents.filter(s=>!shownIds.has(s.id))
+      .sort((a,b)=>a.studentName.localeCompare(b.studentName));
+    if(noSched.length>0){
+      const div=document.createElement('div');
+      div.className='hs-divider grade-divider';
+      div.textContent='Chưa có lịch học';
+      listEl.appendChild(div);
+      noSched.forEach(s=>listEl.appendChild(makeStudentCard(s)));
+    }
+  }
 }
-attendanceDate.value=todayStr();
-function renderAttendance(){
-  const date=attendanceDate.value;
-  const key=`${date}|${activeGrade}`;
-  if(!state.attendance) state.attendance={};
-  if(!state.attendance[key]) state.attendance[key]={};
-  const dayRecord=state.attendance[key];
-  const students=studentsInGrade(activeGrade).sort((a,b)=>a.studentName.localeCompare(b.studentName));
-  attendanceEmpty.hidden=students.length>0;
-  attendanceList.innerHTML='';
-  students.forEach(s=>{
-    const status=dayRecord[s.id]||null;
-    const li=document.createElement('li');
-    li.className='attendance-row';
-    li.innerHTML=`<span class="student-name">${escapeHtml(s.studentName)}</span>
-      <button class="status-btn present-btn ${status==='present'?'present':''}" aria-label="Present">✓</button>
-      <button class="status-btn absent-btn ${status==='absent'?'absent':''}" aria-label="Absent">✕</button>`;
-    li.querySelector('.present-btn').addEventListener('click',()=>setAttendance(key,s.id,'present'));
-    li.querySelector('.absent-btn').addEventListener('click',()=>setAttendance(key,s.id,'absent'));
-    attendanceList.appendChild(li);
+
+// sort toggle button
+document.getElementById('sortStudentsBtn').addEventListener('click',()=>{
+  const bar=document.getElementById('hocSinhSortBar');
+  bar.hidden=!bar.hidden;
+});
+
+document.querySelectorAll('.sort-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    currentSort=btn.dataset.sort;
+    document.querySelectorAll('.sort-btn').forEach(b=>b.classList.toggle('active',b===btn));
+    renderHocSinh();
   });
-}
-function setAttendance(key,studentId,status){
-  if(!state.attendance[key]) state.attendance[key]={};
-  const rec=state.attendance[key];
-  if(rec[studentId]===status) delete rec[studentId];
-  else rec[studentId]=status;
-  saveData(); renderAttendance();
-}
-document.getElementById('markAllPresent').addEventListener('click',()=>{
-  const key=`${attendanceDate.value}|${activeGrade}`;
-  if(!state.attendance) state.attendance={};
-  if(!state.attendance[key]) state.attendance[key]={};
-  studentsInGrade(activeGrade).forEach(s=>state.attendance[key][s.id]='present');
-  saveData(); renderAttendance();
 });
-document.getElementById('markAllAbsent').addEventListener('click',()=>{
-  const key=`${attendanceDate.value}|${activeGrade}`;
-  if(!state.attendance) state.attendance={};
-  if(!state.attendance[key]) state.attendance[key]={};
-  studentsInGrade(activeGrade).forEach(s=>state.attendance[key][s.id]='absent');
-  saveData(); renderAttendance();
-});
-attendanceDate.addEventListener('change',renderAttendance);
 
 /* ============================================================
    HỌC PHÍ
