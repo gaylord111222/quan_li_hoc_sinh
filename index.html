@@ -49,12 +49,13 @@
       <span class="hoc-sinh-total" id="hocSinhTotal">0 học sinh</span>
       <button class="btn-icon small" id="sortStudentsBtn" aria-label="Sort">⇅</button>
     </div>
-    <div id="hocSinhSortBar" hidden>
+    <div id="hocSinhSortBar">
       <div class="sort-options">
         <button class="sort-btn active" data-sort="az">A → Z</button>
         <button class="sort-btn" data-sort="lop">Lớp học</button>
         <button class="sort-btn" data-sort="lich">Lịch học</button>
       </div>
+      <button class="btn-solid" id="xuatFileBtn" style="width:100%;margin-bottom:12px">📤 Xuất file</button>
     </div>
     <div id="hocSinhList"></div>
     <p class="empty-state" id="hocSinhEmpty">Chưa có học sinh nào.</p>
@@ -156,25 +157,28 @@
     <ul class="student-list" id="teacherList"></ul>
     <p class="empty-state" id="teacherEmpty">Chưa có giáo viên. Tap + để thêm.</p>
   </section>
-  <!-- WHEEL: GRADE PICKER -->
+  <!-- RANDOM: GRADE PICKER -->
   <section class="screen" id="screen-wheel-grades" hidden>
     <ul class="grade-list" id="wheelGradeList"></ul>
   </section>
 
-  <!-- WHEEL: SPINNER FOR A GRADE -->
+  <!-- RANDOM: DUCK RACE -->
   <section class="screen" id="screen-wheel" hidden>
-    <div class="wheel-stage">
-      <div class="wheel-pointer">▼</div>
-      <canvas id="wheelCanvas" width="320" height="320"></canvas>
-      <div class="wheel-hub" id="spinBtn">SPIN</div>
+    <div id="duckRaceWrap">
+      <div class="duck-river" id="duckRiver"></div>
+      <div class="duck-finish-line"></div>
     </div>
-    <div class="wheel-result" id="wheelResult"></div>
-    <label class="wheel-toggle">
-      <input type="checkbox" id="removeOnPick">
-      Remove student after picking
-    </label>
-    <button class="chip" id="resetWheelBtn">Reset wheel</button>
-    <p class="empty-state" id="wheelEmpty">No students in this grade yet.</p>
+    <div class="duck-controls">
+      <div class="duck-result" id="duckResult"></div>
+      <button class="btn-solid" id="raceStartBtn">🏁 Bắt đầu đua!</button>
+      <label class="wheel-toggle">
+        <input type="checkbox" id="removeOnPick">
+        Xóa học sinh sau khi chọn
+      </label>
+      <button class="chip" id="resetWheelBtn">Đặt lại danh sách</button>
+      <button class="btn-icon small" id="editDuckListBtn" style="background:var(--chalk-dim);color:var(--green-deep)">✏️</button>
+    </div>
+    <p class="empty-state" id="wheelEmpty">Chưa có học sinh trong lịch này.</p>
   </section>
 
 </main>
@@ -187,7 +191,7 @@
     <span class="tab-icon">▦</span><span>lịch dạy</span>
   </button>
   <button class="tab" data-screen="wheel-grades">
-    <span class="tab-icon">◎</span><span>Wheel</span>
+    <span class="tab-icon">🎲</span><span>Random</span>
   </button>
   <button class="tab" data-screen="hoc-phi">
     <span class="tab-icon">₫</span><span>Học phí</span>
@@ -225,6 +229,9 @@
     <label>Ngày nhập học <span class="opt">(enrollment date)</span>
       <input type="date" id="studentEnrollDate">
     </label>
+    <label>Ngày nhập học <span class="opt">(enrollment date)</span>
+      <input type="date" id="studentEnrollDate">
+    </label>
     <label>Ghi chú <span class="opt">(notes)</span>
       <textarea id="studentNotes" placeholder="Dị ứng, chỗ ngồi, lưu ý…"></textarea>
     </label>
@@ -254,13 +261,16 @@
     <label>Tên giáo viên <span class="opt">(teacher name)</span>
       <input type="text" id="scheduleTeacher" placeholder="e.g. Nguyễn Thị B">
     </label>
+    <label>Khối lớp <span class="opt">(grade)</span>
+      <select id="scheduleGradeSelect"></select>
+    </label>
     <label>Học phí / tháng <span class="opt">(monthly fee)</span>
       <input type="text" id="scheduleBaseFee" placeholder="e.g. 500000">
     </label>
     <div class="modal-actions">
       <div class="modal-actions-right">
-        <button class="btn-text" id="cancelScheduleBtn">Cancel</button>
-        <button class="btn-solid" id="saveScheduleBtn">Save</button>
+        <button class="btn-text" id="cancelScheduleBtn">Hủy</button>
+        <button class="btn-solid" id="saveScheduleBtn">Lưu</button>
       </div>
     </div>
   </div>
@@ -273,21 +283,21 @@
       <h2>Add Time Block</h2>
       <button class="modal-close" id="closeTimeBlockModalBtn" aria-label="Close">✕</button>
     </div>
-    <label>Day
+    <label>Ngày trong tuần
       <select id="timeBlockDay">
-        <option value="0">Sunday</option>
-        <option value="1">Monday</option>
-        <option value="2">Tuesday</option>
-        <option value="3">Wednesday</option>
-        <option value="4">Thursday</option>
-        <option value="5">Friday</option>
-        <option value="6">Saturday</option>
+        <option value="0">Chủ nhật</option>
+        <option value="1">Thứ hai</option>
+        <option value="2">Thứ ba</option>
+        <option value="3">Thứ tư</option>
+        <option value="4">Thứ năm</option>
+        <option value="5">Thứ sáu</option>
+        <option value="6">Thứ bảy</option>
       </select>
     </label>
-    <label>Start time
+    <label>Giờ bắt đầu
       <input type="time" id="timeBlockStart">
     </label>
-    <label>End time
+    <label>Giờ kết thúc
       <input type="time" id="timeBlockEnd">
     </label>
     <div class="modal-actions">
@@ -376,6 +386,30 @@
 </div>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script src="app.js"></script>
+<!-- XUẤT FILE MODAL -->
+<div class="modal-backdrop" id="xuatFileModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Xuất danh sách học sinh</h2>
+      <button class="modal-close" id="closeXuatFileModalBtn">✕</button>
+    </div>
+    <p style="font-size:15px;color:var(--slate);margin:0 0 16px">Sắp xếp danh sách học sinh theo:</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+      <label style="display:flex;align-items:center;gap:12px;font-size:16px;font-weight:700;cursor:pointer">
+        <input type="radio" name="xuatSort" value="khoi" checked style="width:20px;height:20px">
+        Theo khối (Grade)
+      </label>
+      <label style="display:flex;align-items:center;gap:12px;font-size:16px;font-weight:700;cursor:pointer">
+        <input type="radio" name="xuatSort" value="suat" style="width:20px;height:20px">
+        Theo khối + suất học (Grade + Schedule)
+      </label>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-solid" id="xuatExcelBtn" style="flex:1">📊 Excel (.xlsx)</button>
+      <button class="btn-solid" id="xuatWordBtn" style="flex:1;background:var(--pencil-dark)">📄 Word (.docx)</button>
+    </div>
+  </div>
+</div>
+  <script src="app.js"></script>
 </body>
 </html>
