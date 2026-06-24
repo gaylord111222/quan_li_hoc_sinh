@@ -1033,3 +1033,76 @@ body{
   padding:8px 14px;
   margin:10px 0 6px;
 }
+/* ── Duck race ── */
+#duckRaceWrap{
+  position:relative;
+  background:linear-gradient(180deg,#a8d8ea 0%,#7ec8e3 40%,#5bb3cc 100%);
+  border-radius:var(--radius);
+  overflow:hidden;
+  margin-bottom:16px;
+  min-height:200px;
+}
+.duck-river{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:8px 0;
+}
+.duck-lane{
+  height:44px;
+  position:relative;
+  display:flex;
+  align-items:center;
+}
+.duck-lane::after{
+  content:'';
+  position:absolute;
+  bottom:0;left:0;right:0;
+  height:1px;
+  background:rgba(255,255,255,0.2);
+}
+.duck{
+  position:absolute;
+  left:8px;
+  font-size:22px;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  transition:left 0.05s linear;
+  will-change:left;
+  white-space:nowrap;
+}
+.duck-name{
+  font-size:11px;
+  font-weight:700;
+  color:#fff;
+  background:rgba(0,0,0,0.35);
+  border-radius:999px;
+  padding:2px 7px;
+  max-width:90px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.duck-finish-line{
+  position:absolute;
+  right:0;top:0;bottom:0;
+  width:4px;
+  background:repeating-linear-gradient(
+    180deg,
+    #fff 0px, #fff 8px,
+    #222 8px, #222 16px
+  );
+}
+.duck-controls{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:10px;
+}
+.duck-result{
+  font-size:22px;
+  font-weight:800;
+  color:var(--green-deep);
+  min-height:32px;
+  text-align:center;
+}
