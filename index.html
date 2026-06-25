@@ -56,7 +56,10 @@
         <button class="sort-btn" data-sort="lich">Lịch học</button>
       </div>
       document.getElementById('importFileBtn').addEventListener('click',openImportModal);
-      <button class="btn-solid" id="xuatFileBtn" style="width:100%;margin-bottom:12px">📤 Xuất file</button>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn-solid" id="xuatFileBtn" style="flex:1">📤 Xuất file</button>
+        <button class="btn-solid" id="importFileBtn" style="flex:1;background:var(--pencil-dark)">📥 Nhập file</button>
+      </div>
     </div>
     <div id="hocSinhList"></div>
     <p class="empty-state" id="hocSinhEmpty">Chưa có học sinh nào.</p>
