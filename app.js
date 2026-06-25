@@ -154,17 +154,91 @@ function navigateTo(name,opts={}){
 
 const HOC_PHI_PASS='04081977';
 let hocPhiUnlocked=false;
+const FINGER_CRED_KEY='hocphi_fingerprint_registered';
+
+async function isBiometricAvailable(){
+  try{
+    if(!window.PublicKeyCredential) return false;
+    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+  }catch(e){ return false; }
+}
+
+async function registerFingerprint(){
+  try{
+    const challenge=new Uint8Array(32);
+    crypto.getRandomValues(challenge);
+    const cred=await navigator.credentials.create({
+      publicKey:{
+        challenge,
+        rp:{name:'Classroom Companion'},
+        user:{id:new Uint8Array(16),name:'teacher',displayName:'Teacher'},
+        pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+        authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},
+        timeout:60000,
+      }
+    });
+    if(cred){
+      localStorage.setItem(FINGER_CRED_KEY,'registered');
+      alert('✅ Đã đăng ký vân tay thành công! Lần sau bạn có thể dùng vân tay để mở Học phí.');
+      return true;
+    }
+  }catch(e){ console.log('Fingerprint register failed:',e); }
+  return false;
+}
+
+async function verifyFingerprint(){
+  try{
+    const challenge=new Uint8Array(32);
+    crypto.getRandomValues(challenge);
+    const assertion=await navigator.credentials.get({
+      publicKey:{
+        challenge,
+        userVerification:'required',
+        timeout:60000,
+      }
+    });
+    return !!assertion;
+  }catch(e){ return false; }
+}
+
+async function unlockHocPhi(){
+  const fingerprintRegistered=localStorage.getItem(FINGER_CRED_KEY)==='registered';
+  const biometricAvailable=await isBiometricAvailable();
+
+  if(fingerprintRegistered && biometricAvailable){
+    // show choice: fingerprint or password
+    const useFingerprint=confirm('Dùng vân tay để mở Học phí?\n\nBấm OK để dùng vân tay, Cancel để nhập mật khẩu.');
+    if(useFingerprint){
+      const ok=await verifyFingerprint();
+      if(ok) return true;
+      alert('Xác thực vân tay thất bại. Vui lòng thử lại hoặc dùng mật khẩu.');
+      return false;
+    }
+  }
+
+  // password fallback
+  const input=prompt(
+    biometricAvailable && !fingerprintRegistered
+      ? 'Nhập mật khẩu để mở Học phí:\n\n(Sau khi đăng nhập bạn có thể đăng ký vân tay)'
+      : 'Nhập mật khẩu để mở Học phí:'
+  );
+  if(input===null) return false;
+  if(input!==HOC_PHI_PASS){ alert('Sai mật khẩu!'); return false; }
+
+  // offer fingerprint registration if available and not yet registered
+  if(biometricAvailable && !fingerprintRegistered){
+    const wantFingerprint=confirm('Bạn có muốn đăng ký vân tay để lần sau không cần nhập mật khẩu không?');
+    if(wantFingerprint) await registerFingerprint();
+  }
+  return true;
+}
 
 document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{
+  tab.addEventListener('click',async()=>{
     const target=tab.dataset.screen;
     if(target==='hoc-phi'&&!hocPhiUnlocked){
-      const input=prompt('Nhập mật khẩu để xem Học phí:');
-      if(input===null) return; // cancelled
-      if(input!==HOC_PHI_PASS){
-        alert('Sai mật khẩu!');
-        return;
-      }
+      const ok=await unlockHocPhi();
+      if(!ok) return;
       hocPhiUnlocked=true;
     }
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===tab));
@@ -616,7 +690,10 @@ function renderScheduleDetail(){
 }
 
 document.getElementById('detailTeacher').addEventListener('click',()=>openScheduleModal(activeScheduleId));
-document.getElementById('detailFeeBtn').addEventListener('click',()=>openFeeModal('schedule'));
+document.getElementById('detailFeeBtn').addEventListener('click',()=>{
+  if(!activeScheduleId) return;
+  openFeeModal('schedule', null, activeScheduleId);
+});
 document.getElementById('addTimeBlockBtn').addEventListener('click',()=>openTimeBlockModal());
 document.getElementById('addStudentToScheduleBtn').addEventListener('click',()=>openAddToScheduleModal());
 document.getElementById('saveScheduleNotesBtn').addEventListener('click',()=>{
@@ -1389,8 +1466,22 @@ function buildDuckLanes(){
   const students=getDuckStudents();
   const river=document.getElementById('duckRiver');
   river.innerHTML='';
+  // water surface shimmer
+  const surface=document.createElement('div');
+  surface.className='duck-water-surface';
+  river.appendChild(surface);
+  // finish flag
+  const wrap=document.getElementById('duckRaceWrap');
+  let flag=wrap.querySelector('.duck-finish-flag');
+  if(!flag){
+    flag=document.createElement('div');
+    flag.className='duck-finish-flag';
+    flag.textContent='🏁';
+    wrap.appendChild(flag);
+  }
   document.getElementById('wheelEmpty').hidden=students.length>0;
-  document.getElementById('raceStartBtn').style.display=students.length>0?'block':'none';
+  document.getElementById('raceStartBtn').style.display=students.length>0?'':'none';
+  const duckEmojis=['🦆','🐥','🦢','🐟','🐠','🐡','🦭','🐬','🐙'];
   students.forEach((s,i)=>{
     const lane=document.createElement('div');
     lane.className='duck-lane';
@@ -1398,7 +1489,10 @@ function buildDuckLanes(){
     duck.className='duck';
     duck.id='duck_'+s.id;
     duck.style.left='8px';
-    duck.innerHTML=`🦆<span class="duck-name">${escapeHtml(s.studentName)}</span>`;
+    const emoji=duckEmojis[i%duckEmojis.length];
+    duck.innerHTML=`<span class="duck-emoji">${emoji}</span><span class="duck-name">${escapeHtml(s.studentName)}</span>`;
+    // stagger bob animation so ducks don't all move in sync
+    duck.querySelector('.duck-emoji').style.animationDelay=`${(i*0.15)%0.6}s`;
     lane.appendChild(duck);
     river.appendChild(lane);
   });
@@ -1413,42 +1507,72 @@ document.getElementById('raceStartBtn').addEventListener('click',()=>{
   document.getElementById('raceStartBtn').disabled=true;
   document.getElementById('raceStartBtn').textContent='🏃 Đang đua...';
 
-  // assign random speeds to each duck
   const raceWrap=document.getElementById('duckRaceWrap');
-  const finishX=raceWrap.offsetWidth-40; // finish line position in px
-  const duckData=students.map(s=>({
+  const finishX=raceWrap.offsetWidth-48;
+
+  // pre-determine winner randomly but secretly
+  const winnerIdx=Math.floor(Math.random()*students.length);
+
+  const duckData=students.map((s,i)=>({
     id:s.id,
     name:s.studentName,
     pos:8,
-    // base speed 1-3px per frame + random wobble
-    speed:1+Math.random()*2,
-    wobble:Math.random()*0.5,
+    baseSpeed:0.8+Math.random()*1.8,       // base pace
+    burstTimer:Math.floor(Math.random()*60), // frames until next burst
+    burstDuration:0,
+    burstSpeed:0,
+    isWinner:i===winnerIdx,
     finished:false,
+    frameCount:0,
   }));
 
-  // pre-determine winner for fairness — one random student always wins
-  const winnerIdx=Math.floor(Math.random()*duckData.length);
-  // give winner slightly higher guaranteed speed
-  duckData[winnerIdx].speed=Math.max(duckData[winnerIdx].speed, 2.5+Math.random()*0.5);
+  // winner gets a guaranteed late-race burst
+  duckData[winnerIdx].lateBoost=true;
 
   function frame(){
-    let allDone=true;
     let winner=null;
+    const maxPos=Math.max(...duckData.filter(d=>!d.finished).map(d=>d.pos));
+
     duckData.forEach(d=>{
       if(d.finished) return;
-      allDone=false;
-      // random speed variation each frame for natural movement
-      const thisSpeed=d.speed+(Math.random()-0.5)*d.wobble;
-      d.pos+=thisSpeed;
+      d.frameCount++;
+
+      // burst logic — random surges and slowdowns
+      if(d.burstDuration>0){
+        d.burstDuration--;
+      } else if(--d.burstTimer<=0){
+        d.burstTimer=30+Math.floor(Math.random()*90);
+        // 40% chance burst forward, 20% chance slow down, 40% normal
+        const r=Math.random();
+        if(r<0.4){ d.burstSpeed=1.5+Math.random()*1.5; d.burstDuration=15+Math.floor(Math.random()*20); }
+        else if(r<0.6){ d.burstSpeed=-0.3; d.burstDuration=10+Math.floor(Math.random()*10); }
+        else { d.burstSpeed=0; }
+      }
+
+      // late-race winner boost: when winner is behind at 70% of track
+      const progress=d.pos/finishX;
+      let lateBoostSpeed=0;
+      if(d.lateBoost && progress>0.65 && d.pos<maxPos-20){
+        lateBoostSpeed=1.5+Math.random()*1;
+      }
+
+      const speed=Math.max(0.2, d.baseSpeed + d.burstSpeed + lateBoostSpeed + (Math.random()-0.5)*0.4);
+      d.pos+=speed;
+
       const el=document.getElementById('duck_'+d.id);
-      if(el) el.style.left=d.pos+'px';
+      if(el) el.style.left=Math.min(d.pos, finishX+10)+'px';
+
       if(d.pos>=finishX){
         d.finished=true;
         if(!winner) winner=d;
       }
     });
+
     if(winner){
       raceRunning=false;
+      // flash winner duck
+      const winEl=document.getElementById('duck_'+winner.id);
+      if(winEl){ winEl.style.filter='drop-shadow(0 0 8px gold)'; winEl.style.transform='scale(1.3)'; }
       document.getElementById('duckResult').textContent=`🏆 ${winner.name} thắng!`;
       document.getElementById('raceStartBtn').disabled=false;
       document.getElementById('raceStartBtn').textContent='🏁 Đua lại!';
@@ -1458,12 +1582,12 @@ document.getElementById('raceStartBtn').addEventListener('click',()=>{
         if(!state.wheelRemoved[key]) state.wheelRemoved[key]=[];
         const winnerStudent=students.find(s=>s.id===winner.id);
         if(winnerStudent){ state.wheelRemoved[key].push(winner.id); saveData(); }
-        setTimeout(()=>{ renderWheel(); },1200);
+        setTimeout(()=>renderWheel(),1500);
       }
-      if(navigator.vibrate) navigator.vibrate(60);
+      if(navigator.vibrate) navigator.vibrate([100,50,100]);
       return;
     }
-    if(!allDone) raceAnimFrame=requestAnimationFrame(frame);
+    raceAnimFrame=requestAnimationFrame(frame);
   }
   raceAnimFrame=requestAnimationFrame(frame);
 });
@@ -1662,9 +1786,28 @@ function openImportModal(){
         <h2>Nhập danh sách học sinh</h2>
         <button class="modal-close" id="closeImportModalBtn">✕</button>
       </div>
-      <p style="font-size:14px;color:var(--slate);margin:0 0 14px">
-        Chọn file Excel (.xlsx) hoặc Word (.docx) có bảng dữ liệu học sinh.
-        Hàng đầu tiên phải là tiêu đề cột (tên học sinh, tên phụ huynh, v.v.)
+      <p style="font-size:14px;font-weight:700;color:var(--green-deep);margin:0 0 8px">
+        Bạn cần nhập file có bảng như này, thông tin tên học sinh là bắt buộc:
+      </p>
+      <div style="overflow-x:auto;margin-bottom:14px">
+        <table class="import-template-table">
+          <thead><tr>
+            <th>Tên học sinh ✱</th>
+            <th>Tên phụ huynh</th>
+            <th>SĐT phụ huynh</th>
+            <th>SĐT học sinh</th>
+            <th>Ngày nhập học</th>
+            <th>Lớp</th>
+            <th>Ghi chú</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>Nguyễn Văn A</td><td>Nguyễn Văn B</td><td>0901234567</td><td>0912345678</td><td>01/09/2024</td><td>7</td><td>Học giỏi</td></tr>
+            <tr><td>Trần Thị C</td><td>Trần Văn D</td><td>0987654321</td><td></td><td></td><td>7</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12px;color:var(--slate);margin:0 0 12px">
+        ✱ Bắt buộc. Các cột khác không bắt buộc. Tên cột nhận diện tự động, không phân biệt hoa thường.
       </p>
       <label style="display:block;font-size:14px;font-weight:700;color:var(--slate);margin-bottom:12px">
         Khối mặc định (nếu file không có cột Lớp)
@@ -1672,10 +1815,6 @@ function openImportModal(){
       </label>
       <input type="file" id="importFileInput" accept=".xlsx,.xls,.docx,.doc"
         style="display:block;width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;margin-bottom:14px;background:#fff">
-      <p style="font-size:13px;color:var(--pencil-dark);margin:0 0 16px">
-        💡 Tên cột được nhận diện tự động theo tiếng Việt.
-        Các tên hợp lệ: "Tên học sinh", "Tên phụ huynh", "SĐT phụ huynh", "Ngày nhập học", "Ghi chú", "Lớp"
-      </p>
       <div class="modal-actions">
         <div class="modal-actions-right">
           <button class="btn-text" id="cancelImportBtn">Hủy</button>
