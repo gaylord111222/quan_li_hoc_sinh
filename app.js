@@ -33,6 +33,7 @@ let state = {
 let appReady = false;
 
 function saveData(){
+  state.grades=GRADES;
   DATA_REF.set(state).catch(e=>console.error('Firebase save error:', e));
 }
 
@@ -40,6 +41,7 @@ function saveData(){
    CONSTANTS
    ============================================================ */
 let GRADES = [1,2,3,4,5,6,7,8,9];
+const DEFAULT_GRADES = [1,2,3,4,5,6,7,8,9];
 const DAY_NAMES = ['Chủ nhật','Thứ hai','Thứ ba','Thứ tư','Thứ năm','Thứ sáu','Thứ bảy'];
 const MONTH_NAMES = ['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12'];
 const SCHED_COLORS = [
@@ -150,9 +152,21 @@ function navigateTo(name,opts={}){
   showScreen(name,opts);
 }
 
+const HOC_PHI_PASS='04081977';
+let hocPhiUnlocked=false;
+
 document.querySelectorAll('.tab').forEach(tab=>{
   tab.addEventListener('click',()=>{
     const target=tab.dataset.screen;
+    if(target==='hoc-phi'&&!hocPhiUnlocked){
+      const input=prompt('Nhập mật khẩu để xem Học phí:');
+      if(input===null) return; // cancelled
+      if(input!==HOC_PHI_PASS){
+        alert('Sai mật khẩu!');
+        return;
+      }
+      hocPhiUnlocked=true;
+    }
     document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t===tab));
     activeGrade=null; screenHistory=[];
     showScreen(target,{showBack:false});
@@ -203,8 +217,9 @@ function renderGradeList(listId='gradeList',mode='roster'){
       <span style="font-size:13px;color:var(--slate);font-weight:700">Add Grade</span>`;
     li.addEventListener('click',()=>{
       const next=Math.max(...GRADES)+1;
-      if(confirm(`Add Grade ${next}?`)){
+      if(confirm(`Thêm Khối ${next}?`)){
         GRADES.push(next);
+        saveData();
         renderGradeList('gradeList','roster');
       }
     });
@@ -1503,6 +1518,197 @@ function openWheelEditModal(){
 }
 
 /* ============================================================
+   NHẬP FILE — Import students from Excel or Word
+   ============================================================ */
+
+// Column header synonyms — maps Vietnamese headers to internal field names
+const HEADER_MAP={
+  'tên học sinh':'studentName','ten hoc sinh':'studentName','họ và tên':'studentName',
+  'ho va ten':'studentName','tên':'studentName','ten':'studentName','họ tên':'studentName',
+  'tên phụ huynh':'parentName','ten phu huynh':'parentName','phụ huynh':'parentName',
+  'phu huynh':'parentName','tên ph':'parentName',
+  'sđt học sinh':'studentPhone','sdt hoc sinh':'studentPhone','đt học sinh':'studentPhone',
+  'sđt hs':'studentPhone','phone học sinh':'studentPhone',
+  'sđt phụ huynh':'parentPhone','sdt phu huynh':'parentPhone','đt phụ huynh':'parentPhone',
+  'sđt ph':'parentPhone','phone phụ huynh':'parentPhone','số điện thoại':'parentPhone',
+  'ngày nhập học':'enrollDate','ngay nhap hoc':'enrollDate','ngày vào':'enrollDate',
+  'ghi chú':'notes','ghi chu':'notes','notes':'notes','note':'notes',
+  'lớp':'grade','lop':'grade','khối':'grade','khoi':'grade','grade':'grade',
+};
+
+function normalizeHeader(h){
+  return (h||'').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove diacritics for matching
+    .replace(/\s+/g,' ');
+}
+
+function mapHeaders(headers){
+  return headers.map(h=>{
+    const norm=normalizeHeader(h);
+    return HEADER_MAP[norm]||null;
+  });
+}
+
+function importStudentsFromRows(dataRows, fieldMap, gradeOverride){
+  let imported=0, skipped=0;
+  dataRows.forEach(row=>{
+    const obj={};
+    fieldMap.forEach((field,i)=>{
+      if(field&&row[i]!==undefined) obj[field]=(row[i]||'').toString().trim();
+    });
+    if(!obj.studentName){ skipped++; return; }
+    // parse grade
+    let grade=gradeOverride||1;
+    if(obj.grade){
+      const g=parseInt(obj.grade);
+      if(!isNaN(g)) grade=g;
+    }
+    if(!GRADES.includes(grade)){ GRADES.push(grade); GRADES.sort((a,b)=>a-b); }
+    if(!state.students) state.students=[];
+    state.students.push({
+      id:uid(),
+      grade,
+      studentName:obj.studentName||'(No name)',
+      parentName:obj.parentName||'',
+      studentPhone:obj.studentPhone||'',
+      parentPhone:obj.parentPhone||'',
+      enrollDate:obj.enrollDate||'',
+      notes:obj.notes||'',
+      scheduleDiscounts:{},
+    });
+    imported++;
+  });
+  saveData();
+  return {imported,skipped};
+}
+
+// --- Excel import via SheetJS CDN ---
+function loadSheetJS(cb){
+  if(window.XLSX){ cb(); return; }
+  const s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload=cb; document.head.appendChild(s);
+}
+
+function importExcel(file, gradeOverride){
+  loadSheetJS(()=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const data=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        if(data.length<2){ alert('File không có dữ liệu!'); return; }
+        const fieldMap=mapHeaders(data[0]);
+        const result=importStudentsFromRows(data.slice(1),fieldMap,gradeOverride);
+        alert(`✅ Nhập thành công ${result.imported} học sinh${result.skipped>0?`, bỏ qua ${result.skipped} dòng trống`:''}.`);
+        renderHocSinh(); renderGradeList();
+      }catch(err){
+        alert('Lỗi đọc file Excel: '+err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// --- Word import via mammoth.js CDN ---
+function loadMammoth(cb){
+  if(window.mammoth){ cb(); return; }
+  const s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
+  s.onload=cb; document.head.appendChild(s);
+}
+
+function importWord(file, gradeOverride){
+  loadMammoth(()=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      mammoth.convertToHtml({arrayBuffer:e.target.result}).then(result=>{
+        try{
+          const parser=new DOMParser();
+          const doc=parser.parseFromString(result.value,'text/html');
+          const tables=doc.querySelectorAll('table');
+          if(tables.length===0){ alert('Không tìm thấy bảng trong file Word!'); return; }
+          const table=tables[0];
+          const rows=[...table.querySelectorAll('tr')];
+          if(rows.length<2){ alert('Bảng không có dữ liệu!'); return; }
+          const headers=[...rows[0].querySelectorAll('td,th')].map(td=>td.textContent);
+          const fieldMap=mapHeaders(headers);
+          const dataRows=rows.slice(1).map(tr=>
+            [...tr.querySelectorAll('td,th')].map(td=>td.textContent.trim())
+          );
+          const res=importStudentsFromRows(dataRows,fieldMap,gradeOverride);
+          alert(`✅ Nhập thành công ${res.imported} học sinh${res.skipped>0?`, bỏ qua ${res.skipped} dòng trống`:''}.`);
+          renderHocSinh(); renderGradeList();
+        }catch(err){
+          alert('Lỗi đọc file Word: '+err.message);
+        }
+      }).catch(err=>alert('Lỗi mở file Word: '+err.message));
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Wire up import button — created in HTML below
+function openImportModal(){
+  closeAllModals();
+  let modal=document.getElementById('importModal');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='importModal';
+    modal.className='modal-backdrop';
+    modal.innerHTML=`<div class="modal">
+      <div class="modal-header">
+        <h2>Nhập danh sách học sinh</h2>
+        <button class="modal-close" id="closeImportModalBtn">✕</button>
+      </div>
+      <p style="font-size:14px;color:var(--slate);margin:0 0 14px">
+        Chọn file Excel (.xlsx) hoặc Word (.docx) có bảng dữ liệu học sinh.
+        Hàng đầu tiên phải là tiêu đề cột (tên học sinh, tên phụ huynh, v.v.)
+      </p>
+      <label style="display:block;font-size:14px;font-weight:700;color:var(--slate);margin-bottom:12px">
+        Khối mặc định (nếu file không có cột Lớp)
+        <select id="importGradeDefault" style="display:block;width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px"></select>
+      </label>
+      <input type="file" id="importFileInput" accept=".xlsx,.xls,.docx,.doc"
+        style="display:block;width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--chalk-dim);font-size:15px;margin-bottom:14px;background:#fff">
+      <p style="font-size:13px;color:var(--pencil-dark);margin:0 0 16px">
+        💡 Tên cột được nhận diện tự động theo tiếng Việt.
+        Các tên hợp lệ: "Tên học sinh", "Tên phụ huynh", "SĐT phụ huynh", "Ngày nhập học", "Ghi chú", "Lớp"
+      </p>
+      <div class="modal-actions">
+        <div class="modal-actions-right">
+          <button class="btn-text" id="cancelImportBtn">Hủy</button>
+          <button class="btn-solid" id="confirmImportBtn">Nhập file</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click',e=>{ if(e.target===modal) modal.hidden=true; });
+    document.getElementById('closeImportModalBtn').addEventListener('click',()=>modal.hidden=true);
+    document.getElementById('cancelImportBtn').addEventListener('click',()=>modal.hidden=true);
+    document.getElementById('confirmImportBtn').addEventListener('click',()=>{
+      const file=document.getElementById('importFileInput').files[0];
+      if(!file){ alert('Vui lòng chọn file!'); return; }
+      const gradeOverride=parseInt(document.getElementById('importGradeDefault').value)||1;
+      const ext=file.name.split('.').pop().toLowerCase();
+      modal.hidden=true;
+      if(ext==='xlsx'||ext==='xls') importExcel(file,gradeOverride);
+      else if(ext==='docx'||ext==='doc') importWord(file,gradeOverride);
+      else alert('Định dạng file không hỗ trợ. Vui lòng dùng .xlsx hoặc .docx');
+    });
+  }
+  // populate grade select
+  const sel=document.getElementById('importGradeDefault');
+  sel.innerHTML='';
+  GRADES.forEach(g=>{
+    const opt=document.createElement('option');
+    opt.value=g; opt.textContent=`Khối ${g}`;
+    sel.appendChild(opt);
+  });
+  modal.hidden=false;
+}
+/* ============================================================
    XUẤT FILE — Export student list to Excel + Word
    ============================================================ */
 document.getElementById('xuatFileBtn').addEventListener('click',()=>{
@@ -1649,6 +1855,8 @@ DATA_REF.on('value',(snapshot)=>{
     state.attendance=data.attendance||{};
     state.wheelRemoved=data.wheelRemoved||{};
     state.feePayments=data.feePayments||{};
+    GRADES=Array.isArray(data.grades)&&data.grades.length>0
+      ?data.grades:DEFAULT_GRADES;
   }
   if(!appReady){
     appReady=true;
