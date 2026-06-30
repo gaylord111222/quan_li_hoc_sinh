@@ -1462,39 +1462,140 @@ function renderWheel(){
   buildDuckLanes();
 }
 
+const DUCK_LANE_H=52;
+const DUCK_COLORS=['#F4C430','#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F'];
+let duckCanvas=document.getElementById('duckCanvas');
+let duckCtx=duckCanvas?duckCanvas.getContext('2d'):null;
+let duckRaceData=[];
+let waveOffset=0;
+
 function buildDuckLanes(){
   const students=getDuckStudents();
-  const river=document.getElementById('duckRiver');
-  river.innerHTML='';
-  // water surface shimmer
-  const surface=document.createElement('div');
-  surface.className='duck-water-surface';
-  river.appendChild(surface);
-  // finish flag
-  const wrap=document.getElementById('duckRaceWrap');
-  let flag=wrap.querySelector('.duck-finish-flag');
-  if(!flag){
-    flag=document.createElement('div');
-    flag.className='duck-finish-flag';
-    flag.textContent='🏁';
-    wrap.appendChild(flag);
-  }
   document.getElementById('wheelEmpty').hidden=students.length>0;
   document.getElementById('raceStartBtn').style.display=students.length>0?'':'none';
-  const duckEmojis=['🦆','🐥','🦢','🐟','🐠','🐡','🦭','🐬','🐙'];
-  students.forEach((s,i)=>{
-    const lane=document.createElement('div');
-    lane.className='duck-lane';
-    const duck=document.createElement('div');
-    duck.className='duck';
-    duck.id='duck_'+s.id;
-    duck.style.left='8px';
-    const emoji=duckEmojis[i%duckEmojis.length];
-    duck.innerHTML=`<span class="duck-emoji">${emoji}</span><span class="duck-name">${escapeHtml(s.studentName)}</span>`;
-    // stagger bob animation so ducks don't all move in sync
-    duck.querySelector('.duck-emoji').style.animationDelay=`${(i*0.15)%0.6}s`;
-    lane.appendChild(duck);
-    river.appendChild(lane);
+  document.getElementById('duckResult').textContent='';
+  if(!duckCanvas) return;
+
+  const laneCount=students.length;
+  const W=duckCanvas.parentElement.offsetWidth||360;
+  const H=Math.max(180, laneCount*DUCK_LANE_H+40);
+  duckCanvas.width=W;
+  duckCanvas.height=H;
+  duckCanvas.style.height=H+'px';
+
+  duckRaceData=students.map((s,i)=>({
+    id:s.id,
+    name:s.studentName,
+    x:30,
+    y:30+i*DUCK_LANE_H,
+    color:DUCK_COLORS[i%DUCK_COLORS.length],
+    bobOffset:Math.random()*Math.PI*2,
+    finished:false,
+  }));
+
+  drawDuckRace();
+}
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawDuckRace(){
+  if(!duckCtx) return;
+  const W=duckCanvas.width, H=duckCanvas.height;
+  const finishX=W-30;
+  duckCtx.clearRect(0,0,W,H);
+
+  const grad=duckCtx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'#5BB8D4');
+  grad.addColorStop(1,'#2E86AB');
+  duckCtx.fillStyle=grad;
+  duckCtx.fillRect(0,0,W,H);
+
+  duckRaceData.forEach(d=>{
+    duckCtx.strokeStyle='rgba(255,255,255,0.15)';
+    duckCtx.lineWidth=1;
+    duckCtx.beginPath();
+    duckCtx.moveTo(0,d.y+DUCK_LANE_H/2);
+    duckCtx.lineTo(W,d.y+DUCK_LANE_H/2);
+    duckCtx.stroke();
+
+    if(!d.finished&&raceRunning){
+      duckCtx.strokeStyle='rgba(255,255,255,0.3)';
+      duckCtx.lineWidth=1.5;
+      for(let r=1;r<=3;r++){
+        duckCtx.beginPath();
+        duckCtx.ellipse(d.x-10-r*8, d.y+4, r*4, r*2, 0, 0, Math.PI*2);
+        duckCtx.stroke();
+      }
+    }
+  });
+
+  const checkH=10;
+  for(let row=0;row<Math.ceil(H/checkH);row++){
+    for(let col=0;col<2;col++){
+      duckCtx.fillStyle=(row+col)%2===0?'#fff':'#222';
+      duckCtx.fillRect(finishX+col*4,row*checkH,4,checkH);
+    }
+  }
+  duckCtx.font='18px serif';
+  duckCtx.fillText('🏁',finishX-4,20);
+
+  duckRaceData.forEach(d=>{
+    const bob=Math.sin(waveOffset+d.bobOffset)*3;
+    const y=d.y+bob;
+
+    duckCtx.fillStyle=d.color;
+    duckCtx.beginPath();
+    duckCtx.ellipse(d.x,y+18,13,10,0,0,Math.PI*2);
+    duckCtx.fill();
+
+    duckCtx.beginPath();
+    duckCtx.arc(d.x+10,y+10,8,0,Math.PI*2);
+    duckCtx.fill();
+
+    duckCtx.fillStyle='#333';
+    duckCtx.beginPath();
+    duckCtx.arc(d.x+14,y+8,2,0,Math.PI*2);
+    duckCtx.fill();
+
+    duckCtx.fillStyle='#FF8C00';
+    duckCtx.beginPath();
+    duckCtx.moveTo(d.x+20,y+10);
+    duckCtx.lineTo(d.x+26,y+9);
+    duckCtx.lineTo(d.x+20,y+13);
+    duckCtx.closePath();
+    duckCtx.fill();
+
+    const wingAngle=Math.sin(waveOffset*2+d.bobOffset)*0.3;
+    duckCtx.fillStyle=d.color==='#F4C430'?'#D4A017':d.color+'CC';
+    duckCtx.save();
+    duckCtx.translate(d.x+2,y+16);
+    duckCtx.rotate(wingAngle);
+    duckCtx.beginPath();
+    duckCtx.ellipse(0,0,8,4,0.3,0,Math.PI*2);
+    duckCtx.fill();
+    duckCtx.restore();
+
+    const nameText=d.name.length>12?d.name.slice(0,11)+'…':d.name;
+    duckCtx.font='bold 11px sans-serif';
+    const tw=duckCtx.measureText(nameText).width;
+    const tagX=d.x+28, tagY=y+8;
+    duckCtx.fillStyle='rgba(0,0,0,0.5)';
+    roundRect(duckCtx,tagX-3,tagY-10,tw+8,16,4);
+    duckCtx.fillStyle='#fff';
+    duckCtx.fillText(nameText,tagX+1,tagY+2);
   });
 }
 
@@ -1502,95 +1603,83 @@ document.getElementById('raceStartBtn').addEventListener('click',()=>{
   if(raceRunning) return;
   const students=getDuckStudents();
   if(students.length===0) return;
-  raceRunning=true;
-  document.getElementById('duckResult').textContent='';
+
+  let count=3;
   document.getElementById('raceStartBtn').disabled=true;
+  document.getElementById('duckResult').textContent=`${count}...`;
+  const countInterval=setInterval(()=>{
+    count--;
+    if(count>0) document.getElementById('duckResult').textContent=`${count}...`;
+    else if(count===0) document.getElementById('duckResult').textContent='🏁 Bắt đầu!';
+    else{
+      clearInterval(countInterval);
+      document.getElementById('duckResult').textContent='';
+      startDuckRace(students);
+    }
+  },800);
+});
+
+function startDuckRace(students){
+  raceRunning=true;
   document.getElementById('raceStartBtn').textContent='🏃 Đang đua...';
-
-  const raceWrap=document.getElementById('duckRaceWrap');
-  const finishX=raceWrap.offsetWidth-48;
-
-  // pre-determine winner randomly but secretly
+  const W=duckCanvas.width;
+  const finishX=W-30;
   const winnerIdx=Math.floor(Math.random()*students.length);
 
-  const duckData=students.map((s,i)=>({
-    id:s.id,
-    name:s.studentName,
-    pos:8,
-    baseSpeed:0.8+Math.random()*1.8,       // base pace
-    burstTimer:Math.floor(Math.random()*60), // frames until next burst
-    burstDuration:0,
-    burstSpeed:0,
-    isWinner:i===winnerIdx,
-    finished:false,
-    frameCount:0,
-  }));
-
-  // winner gets a guaranteed late-race burst
-  duckData[winnerIdx].lateBoost=true;
+  duckRaceData.forEach((d,i)=>{
+    d.baseSpeed=0.8+Math.random()*2;
+    d.burstTimer=Math.floor(Math.random()*60);
+    d.burstDuration=0;
+    d.burstSpeed=0;
+    d.lateBoost=i===winnerIdx;
+    d.finished=false;
+    d.x=30;
+  });
 
   function frame(){
+    waveOffset+=0.08;
+    const maxX=Math.max(...duckRaceData.filter(d=>!d.finished).map(d=>d.x));
     let winner=null;
-    const maxPos=Math.max(...duckData.filter(d=>!d.finished).map(d=>d.pos));
 
-    duckData.forEach(d=>{
+    duckRaceData.forEach(d=>{
       if(d.finished) return;
-      d.frameCount++;
-
-      // burst logic — random surges and slowdowns
-      if(d.burstDuration>0){
-        d.burstDuration--;
-      } else if(--d.burstTimer<=0){
-        d.burstTimer=30+Math.floor(Math.random()*90);
-        // 40% chance burst forward, 20% chance slow down, 40% normal
+      if(d.burstDuration>0){ d.burstDuration--; }
+      else if(--d.burstTimer<=0){
+        d.burstTimer=20+Math.floor(Math.random()*80);
         const r=Math.random();
-        if(r<0.4){ d.burstSpeed=1.5+Math.random()*1.5; d.burstDuration=15+Math.floor(Math.random()*20); }
-        else if(r<0.6){ d.burstSpeed=-0.3; d.burstDuration=10+Math.floor(Math.random()*10); }
-        else { d.burstSpeed=0; }
+        if(r<0.4){ d.burstSpeed=1+Math.random()*2; d.burstDuration=10+Math.floor(Math.random()*25); }
+        else if(r<0.6){ d.burstSpeed=-0.2; d.burstDuration=8; }
+        else d.burstSpeed=0;
       }
-
-      // late-race winner boost: when winner is behind at 70% of track
-      const progress=d.pos/finishX;
-      let lateBoostSpeed=0;
-      if(d.lateBoost && progress>0.65 && d.pos<maxPos-20){
-        lateBoostSpeed=1.5+Math.random()*1;
-      }
-
-      const speed=Math.max(0.2, d.baseSpeed + d.burstSpeed + lateBoostSpeed + (Math.random()-0.5)*0.4);
-      d.pos+=speed;
-
-      const el=document.getElementById('duck_'+d.id);
-      if(el) el.style.left=Math.min(d.pos, finishX+10)+'px';
-
-      if(d.pos>=finishX){
-        d.finished=true;
-        if(!winner) winner=d;
-      }
+      const progress=d.x/finishX;
+      const lateBoost=(d.lateBoost&&progress>0.6&&d.x<maxX-15)?1.5:0;
+      const speed=Math.max(0.2,d.baseSpeed+d.burstSpeed+lateBoost+(Math.random()-0.4)*0.3);
+      d.x=Math.min(d.x+speed, finishX+5);
+      if(d.x>=finishX){ d.finished=true; if(!winner) winner=d; }
     });
+
+    drawDuckRace();
 
     if(winner){
       raceRunning=false;
-      // flash winner duck
-      const winEl=document.getElementById('duck_'+winner.id);
-      if(winEl){ winEl.style.filter='drop-shadow(0 0 8px gold)'; winEl.style.transform='scale(1.3)'; }
+      const winStudent=students.find(s=>s.id===winner.id);
       document.getElementById('duckResult').textContent=`🏆 ${winner.name} thắng!`;
       document.getElementById('raceStartBtn').disabled=false;
       document.getElementById('raceStartBtn').textContent='🏁 Đua lại!';
-      if(document.getElementById('removeOnPick').checked){
+      if(document.getElementById('removeOnPick').checked&&winStudent){
         const key=activeWheelScheduleId||('grade_'+activeGrade);
         if(!state.wheelRemoved) state.wheelRemoved={};
         if(!state.wheelRemoved[key]) state.wheelRemoved[key]=[];
-        const winnerStudent=students.find(s=>s.id===winner.id);
-        if(winnerStudent){ state.wheelRemoved[key].push(winner.id); saveData(); }
-        setTimeout(()=>renderWheel(),1500);
+        state.wheelRemoved[key].push(winner.id);
+        saveData(); setTimeout(()=>renderWheel(),1500);
       }
-      if(navigator.vibrate) navigator.vibrate([100,50,100]);
+      if(navigator.vibrate) navigator.vibrate([100,50,200]);
       return;
     }
     raceAnimFrame=requestAnimationFrame(frame);
   }
   raceAnimFrame=requestAnimationFrame(frame);
-});
+}
 
 document.getElementById('resetWheelBtn').addEventListener('click',()=>{
   const key=activeWheelScheduleId||('grade_'+activeGrade);
@@ -1973,6 +2062,7 @@ document.getElementById('xuatWordBtn').addEventListener('click',()=>{
 /* ============================================================
    FIREBASE INIT — load data then start app
    ============================================================ */
+document.getElementById('importFileBtn').addEventListener('click',()=>openImportModal());
 showLoading(true);
 DATA_REF.on('value',(snapshot)=>{
   const data=snapshot.val();
