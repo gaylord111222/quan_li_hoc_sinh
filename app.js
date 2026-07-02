@@ -1474,10 +1474,15 @@ function buildDuckLanes(){
   document.getElementById('wheelEmpty').hidden=students.length>0;
   document.getElementById('raceStartBtn').style.display=students.length>0?'':'none';
   document.getElementById('duckResult').textContent='';
+
+  // re-grab canvas each time screen becomes visible — fixes width=0 bug
+  duckCanvas=document.getElementById('duckCanvas');
+  duckCtx=duckCanvas?duckCanvas.getContext('2d'):null;
   if(!duckCanvas) return;
 
   const laneCount=students.length;
-  const W=duckCanvas.parentElement.offsetWidth||360;
+  // use window width as fallback if element not yet laid out
+  const W=Math.max(duckCanvas.parentElement.offsetWidth||0, window.innerWidth-40, 300);
   const H=Math.max(180, laneCount*DUCK_LANE_H+40);
   duckCanvas.width=W;
   duckCanvas.height=H;
@@ -1681,6 +1686,38 @@ function startDuckRace(students){
   raceAnimFrame=requestAnimationFrame(frame);
 }
 
+// Fullscreen for duck race
+document.getElementById('duckFullscreenBtn').addEventListener('click',()=>{
+  const wrap=document.getElementById('duckRaceWrap');
+  if(document.fullscreenElement){
+    document.exitFullscreen();
+  } else {
+    wrap.requestFullscreen().catch(e=>{
+      // fallback: open in new tab if fullscreen blocked
+      alert('Trình duyệt không cho phép toàn màn hình. Hãy thử nhấn F11.');
+    });
+  }
+});
+
+// When fullscreen activates, resize canvas to fill screen
+document.addEventListener('fullscreenchange',()=>{
+  if(document.fullscreenElement){
+    const W=window.screen.width;
+    const H=window.screen.height;
+    duckCanvas.width=W;
+    duckCanvas.height=H;
+    duckCanvas.style.width='100%';
+    duckCanvas.style.height='100%';
+    // recalculate duck Y positions for new height
+    duckRaceData.forEach((d,i)=>{
+      d.y=40+i*((H-80)/Math.max(duckRaceData.length,1));
+    });
+    drawDuckRace();
+  } else {
+    // restore normal size
+    buildDuckLanes();
+  }
+});
 document.getElementById('resetWheelBtn').addEventListener('click',()=>{
   const key=activeWheelScheduleId||('grade_'+activeGrade);
   if(!state.wheelRemoved) state.wheelRemoved={};
