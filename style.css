@@ -78,6 +78,10 @@ body{
   padding:16px 16px calc(24px + var(--safe-bottom));
   -webkit-overflow-scrolling:touch;
 }
+/* Calendar screen needs horizontal overflow visible */
+#screen-schedule{
+  overflow-x:hidden;
+}
 
 /* Toolbar (search/filter row) */
 .toolbar{
@@ -872,10 +876,27 @@ body{
 }
 .calendar-wrap{
   overflow-x:auto;
+  overflow-y:visible;
   -webkit-overflow-scrolling:touch;
   border-radius:var(--radius);
   border:1.5px solid var(--chalk-dim);
   background:#fff;
+  /* Pin scrollbar to bottom of viewport */
+  position:sticky;
+  bottom:0;
+}
+
+/* Force scrollbar always visible on the calendar */
+.calendar-wrap::-webkit-scrollbar{
+  height:8px;
+}
+.calendar-wrap::-webkit-scrollbar-track{
+  background:var(--chalk-dim);
+  border-radius:4px;
+}
+.calendar-wrap::-webkit-scrollbar-thumb{
+  background:var(--green-deep);
+  border-radius:4px;
 }
 .calendar-table{
   border-collapse:collapse;
